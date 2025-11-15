@@ -234,14 +234,27 @@ class Controller extends AbstractController {
 
     # Check that the state parameter matches
     $cache = $this->connectCache();
-    if(!($state=$cache->get('state:'.$get_state))) {
+    $state = $cache->get('state:'.$get_state);
+    if(!$state) {
       return $this->html_error('Invalid State', 'Le paramètre state n\'est pas valide');
     }
 
+    # Le cache retourne un array (sérialisé PHP), pas un objet
+    if (!is_array($state)) {
+      return $this->html_error('Invalid State', 'Format de state invalide');
+    }
+
+    $user_code = $state['user_code'] ?? null;
+    $device_code = $state['device_code'] ?? null;
+
+    if (!$user_code) {
+      return $this->html_error('Invalid Request', 'user_code manquant dans le state');
+    }
+
     # Look up the info from the user code provided in the state parameter
-    $cache_content = $cache->get($state->user_code);
+    $cache_content = $cache->get($user_code);
     if($cache_content == false) {
-      return $this->html_error('Invalid Request', 'user_code introuvable');
+      return $this->html_error('Invalid Request', 'user_code introuvable (expiré ou invalide)');
     }
 
     $flow = $this->getParameter('app_flow');
@@ -264,11 +277,18 @@ class Controller extends AbstractController {
       $access_token->expires_in = self::ACCESS_EXPIRE;
       $access_token->usage_points_id = $usage_points_id;
       $access_token->scope = '';
-      $cache->set($cache_content->device_code, [
+      
+      # Accès robuste: cache_content peut être array ou objet
+      $content_device_code = is_array($cache_content) ? ($cache_content['device_code'] ?? null) : ($cache_content->device_code ?? null);
+      if (!$content_device_code) {
+        return $this->html_error('Invalid Request', 'device_code manquant dans cache_content');
+      }
+      
+      $cache->set($content_device_code, [
         'status' => 'complete',
         'token_response' => $access_token
       ], 120);
-      $cache->delete($state->user_code);
+      $cache->delete($user_code);
     }
     else {
       # Exchange the authorization code for an access token
@@ -276,10 +296,16 @@ class Controller extends AbstractController {
       # TODO: Might need to provide a way to customize this request in case of
       # non-standard OAuth 2 services
 
+      # Accès robuste: cache_content peut être array ou objet
+      $content_client_id = is_array($cache_content) ? ($cache_content['client_id'] ?? null) : ($cache_content->client_id ?? null);
+      $content_client_secret = is_array($cache_content) ? ($cache_content['client_secret'] ?? null) : ($cache_content->client_secret ?? null);
+      $content_pkce_verifier = is_array($cache_content) ? ($cache_content['pkce_verifier'] ?? null) : ($cache_content->pkce_verifier ?? null);
+      $content_device_code = is_array($cache_content) ? ($cache_content['device_code'] ?? null) : ($cache_content->device_code ?? null);
+
       $params = [
         'grant_type' => 'authorization_code',
         'code' => $request->query->get('code'),
-        'client_id' => $cache_content->client_id,
+        'client_id' => $content_client_id,
       ];
       $redirect_uri = $this->getParameter('app_redirect_uri');
       if ($redirect_uri) {
@@ -289,11 +315,11 @@ class Controller extends AbstractController {
       if($client_secret) {
         $params['client_secret'] = $client_secret;
       }
-      elseif($cache_content->client_secret) {
-        $params['client_secret'] = $cache_content->client_secret;
+      elseif($content_client_secret) {
+        $params['client_secret'] = $content_client_secret;
       }
       if($this->getParameter('app_pkce')) {
-        $params['code_verifier'] = $cache_content->pkce_verifier;
+        $params['code_verifier'] = $content_pkce_verifier;
       }
 
       $ch = curl_init();
@@ -311,8 +337,10 @@ class Controller extends AbstractController {
 
       if(!$access_token || !property_exists($access_token, 'access_token')) {
         # If there are any problems getting an access token, kill the request and display an error
-        $cache->delete($state->user_code);
-        $cache->delete($cache_content->device_code);
+        $cache->delete($user_code);
+        if ($content_device_code) {
+          $cache->delete($content_device_code);
+        }
         return $this->html_error('Error Logging In', 'Il y a eu une erreur en essayant d\'obtenir un jeton d\'accès du service <p><pre>'.$token_response.'</pre></p>');
       }
 
@@ -329,11 +357,14 @@ class Controller extends AbstractController {
       }
 
       # Stash the access token in the cache and display a success message
-      $cache->set($cache_content->device_code, [
+      if (!$content_device_code) {
+        return $this->html_error('Invalid Request', 'device_code manquant dans cache_content (flow device)');
+      }
+      $cache->set($content_device_code, [
         'status' => 'complete',
         'token_response' => $access_token
       ], 120);
-      $cache->delete($state->user_code);
+      $cache->delete($user_code);
     }
     return $this->render('signed-in.html.twig');
   }
