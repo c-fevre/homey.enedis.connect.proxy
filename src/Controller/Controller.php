@@ -176,9 +176,18 @@ class Controller extends AbstractController {
       $state .= $get_state;
     }
 
+    // Rafraîchir le TTL du user_code pour laisser le temps de se connecter côté Enedis
+    try { $cache->expire($user_code, 300); } catch (\Throwable $e) {}
+
+    // Extraire le device_code pour le stocker dans l'état (utile au suivi)
+    $deviceCode = null;
+    if (is_array($cache_content) && isset($cache_content['device_code'])) { $deviceCode = $cache_content['device_code']; }
+    if (is_object($cache_content) && isset($cache_content->device_code)) { $deviceCode = $cache_content->device_code; }
+
     $cache->set('state:'.$state, [
-      'user_code' => $user_code,
-      'timestamp' => time(),
+      'user_code'  => $user_code,
+      'device_code'=> $deviceCode,
+      'timestamp'  => time(),
     ], 300);
 
     // TODO: might need to make this configurable to support OAuth servers that have
