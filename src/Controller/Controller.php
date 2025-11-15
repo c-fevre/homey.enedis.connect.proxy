@@ -548,12 +548,12 @@ class Controller extends AbstractController {
         return $this->error('invalid_grant', 'device_code not found in db');
       }
 
-      if($data && $data->status == 'pending') {
+      if($data && $data['status'] == 'pending') {
         return $this->error('authorization_pending');
-      } else if($data && $data->status == 'complete') {
+      } else if($data && $data['status'] == 'complete') {
         # return the raw access token response from the real authorization server
         $cache->delete($device_code);
-        return $this->success($data->token_response);
+        return $this->success($data['token_response']);
       } else {
         return $this->error('invalid_grant', 'Authorization unsuccessful');
       }
@@ -675,6 +675,10 @@ class Controller extends AbstractController {
 
     self::resetHeaders();
 
+    # Accès robuste: $cg peut être array ou objet (selon cache)
+    $token_type = is_array($cg) ? ($cg['token_type'] ?? 'Bearer') : ($cg->token_type ?? 'Bearer');
+    $access_token = is_array($cg) ? ($cg['access_token'] ?? null) : ($cg->access_token ?? null);
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_data_endpoint') . '/' . $path. '?' . $query2);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -683,7 +687,7 @@ class Controller extends AbstractController {
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     curl_setopt($ch, CURLOPT_HEADERFUNCTION, '\App\Controller\Controller::setHeader');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: ' . $cg->token_type . ' '. $cg->access_token, 'Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: ' . $token_type . ' '. $access_token, 'Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
     $data = curl_exec($ch);
     $html_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
