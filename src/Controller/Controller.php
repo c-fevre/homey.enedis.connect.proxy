@@ -250,7 +250,7 @@ class Controller extends AbstractController {
     # Retrieve the state
     $cache = $this->connectCache();
     $state = $cache->get('state:'.$get_state);
-    error_log('[AUTH] State cache lookup for key "state:'.$get_state.'" - found: '.(is_null($state) ? 'NULL' : (is_array($state) ? 'array['.count($state).']' : gettype($state).')));
+    error_log('[AUTH] State cache lookup for key "state:'.$get_state.'" - found: '.(is_null($state) ? 'NULL' : (is_array($state) ? 'array['.count($state).']' : gettype($state))));
 
     # Le cache retourne un array (sérialisé PHP), pas un objet
     if (!is_array($state)) {
