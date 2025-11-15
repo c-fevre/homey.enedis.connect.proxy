@@ -10,6 +10,10 @@ services:
     ports:
       # Exposé uniquement en localhost pour le reverse proxy Nginx système
       - "127.0.0.1:8080:80"
+    dns:
+      # DNS publics pour résoudre gw.prd.api.enedis.fr et autres domaines externes
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_SECRET=${APP_SECRET}
