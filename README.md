@@ -9,7 +9,7 @@ This project if a fork of https://github.com/aaronpk/Device-Flow-Proxy-Server, a
 
 This service acts as an OAuth server that implements the device code flow, proxying to a real OAuth server behind the scenes.
 
-Compared to the original project, this implementation uses MongoDB or PostgreSQL instead of Redis (because it was easier for me to find a serious and free provider with MongoDB or PostgreSQL), it sends back all parameters received during redirect (mainly to get usage_point_id from Enedis), it adds a feature to provide client_secret from .env file instead of getting it from device request, to keep it private, and it can act as a proxy to add this client_secret from `.env` file to Enedis when refreshing tokens, if you don't want the device to provide it.
+Compared to the original project, this implementation uses PostgreSQL instead of Redis, it sends back all parameters received during redirect (mainly to get usage_point_id from Enedis), it adds a feature to provide client_secret from .env file instead of getting it from device request, to keep it private, and it can act as a proxy to add this client_secret from `.env` file to Enedis when refreshing tokens, if you don't want the device to provide it.
 
 Installation
 ------------
@@ -21,7 +21,7 @@ composer install
 
 In the `.env` file, fill out the required variables and don't forget to change APP_SECRET to another random string.
 
-You will need to install MongoDB or PostgreSQL if it is not already on your system, or point to an existing MongoDB or PostgreSQL server in the config file.
+You will need to install PostgreSQL if it is not already on your system, or point to an existing PostgreSQL server in the config file.
 
 Define your OAuth server's authorization endpoint and token endpoint URL, and optionaly the client_secret, this way it will be kept private between your web server and Enedis, otherwise the device must provide it during requests.
 

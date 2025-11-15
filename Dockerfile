@@ -33,18 +33,15 @@ COPY docker/apache/vhost.conf /etc/apache2/sites-available/000-default.conf
 # Définir le répertoire de travail
 WORKDIR /var/www/html
 
-# Copier les fichiers de dépendances
-COPY composer.json composer.lock ./
+# Copier le manifeste de dépendances
+COPY composer.json ./
 
-# Mettre à jour les dépendances pour corriger les vulnérabilités de sécurité
-RUN composer update --no-dev --no-scripts --no-autoloader --optimize-autoloader \
-    --with-all-dependencies
+# Installer les dépendances (génère composer.lock en build)
+RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist --no-progress \
+    && composer dump-autoload --optimize
 
 # Copier le reste du code
 COPY . .
-
-# Finaliser l'installation Composer
-RUN composer dump-autoload --optimize
 
 # Permissions
 RUN chown -R www-data:www-data /var/www/html \
