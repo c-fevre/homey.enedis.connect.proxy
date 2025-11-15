@@ -322,9 +322,14 @@ class Controller extends AbstractController {
         $params['code_verifier'] = $content_pkce_verifier;
       }
 
+      // Log des paramètres avant l'appel (masquer client_secret et code_verifier)
+      $debug_params = $params;
+      if (isset($debug_params['client_secret'])) $debug_params['client_secret'] = '***';
+      if (isset($debug_params['code_verifier'])) $debug_params['code_verifier'] = '***';
+      error_log('[AUTH] Calling token endpoint: '.$this->getParameter('app_token_endpoint').' with params: '.json_encode($debug_params));
+
       $ch = curl_init();
       curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_token_endpoint'));
-      //var_dump($this->getParameter('app_token_endpoint'));
       curl_setopt($ch, CURLOPT_POST, true);
       curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -332,7 +337,21 @@ class Controller extends AbstractController {
         curl_setopt($ch, CURLOPT_VERBOSE, true);
       }
       $token_response = curl_exec($ch);
-      //var_dump($token_response);
+      $curl_error = curl_error($ch);
+      $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+      curl_close($ch);
+
+      // Log détaillé pour debug
+      error_log('[AUTH] Token endpoint response - HTTP: '.$http_code.', cURL error: '.$curl_error.', Response: '.substr($token_response, 0, 500));
+
+      if ($curl_error) {
+        $cache->delete($user_code);
+        if ($content_device_code) {
+          $cache->delete($content_device_code);
+        }
+        return $this->html_error('Error Logging In', 'Erreur réseau lors de la communication avec le service d\'authentification: '.$curl_error);
+      }
+
       $access_token = json_decode($token_response);
 
       if(!$access_token || !property_exists($access_token, 'access_token')) {
@@ -341,7 +360,8 @@ class Controller extends AbstractController {
         if ($content_device_code) {
           $cache->delete($content_device_code);
         }
-        return $this->html_error('Error Logging In', 'Il y a eu une erreur en essayant d\'obtenir un jeton d\'accès du service <p><pre>'.$token_response.'</pre></p>');
+        $error_detail = $token_response ?: 'Réponse vide du serveur';
+        return $this->html_error('Error Logging In', 'Il y a eu une erreur en essayant d\'obtenir un jeton d\'accès du service (HTTP '.$http_code.') <p><pre>'.htmlspecialchars($error_detail).'</pre></p>');
       }
 
       // pass other parameters as json attributes
