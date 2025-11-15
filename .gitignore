@@ -4,6 +4,7 @@ var/
 .DS_Store
 config.php
 .phpunit.result.cache
+composer.lock
 
 ###> symfony/framework-bundle ###
 /.env.local
