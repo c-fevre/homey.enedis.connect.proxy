@@ -20,7 +20,16 @@
 
 <form action="{{ url('verify_code') }}" method="get">
 <div style="text-align: center">
-  <input type="text" name="code" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX" id="user_code" value="{{ code }}" autocomplete="off" style="font-size: 20px; padding: 15px; width: 450px; letter-spacing: 2px; font-family: monospace; text-transform: uppercase;">
+  <input
+    type="text"
+    name="code"
+    placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX"
+    id="user_code"
+    value="{{ code }}"
+    autocomplete="off"
+    style="font-size: 20px; padding: 15px; width: 450px; letter-spacing: 2px; font-family: monospace; text-transform: uppercase; text-align: center;"
+    {% if code %}readonly{% endif %}
+  >
   <input type="hidden" name="state" value="{{ state }}">
   <p>
     <button type="submit" style="border: 0; padding: 0; width: 282px; height: 79px;" name="btnSubmit" title="Acc<C3><A9>der <C3><A0> mon espace Enedis">
