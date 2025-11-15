@@ -6,7 +6,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use App\Util\Helpers;
 use App\Util\Cache;
 use App\Util\CachePG;
@@ -46,6 +46,12 @@ class Controller extends AbstractController {
   #[Route('/', name: 'index', methods: ['GET'])]
   public function index(): Response {
     return $this->render('index.html.twig');
+  }
+
+  # Simple healthcheck endpoint
+  #[Route('/health', name: 'health', methods: ['GET'])]
+  public function health(): Response {
+    return new JsonResponse(['status' => 'ok']);
   }
 
   # Check version of env file if defined against user agent header
