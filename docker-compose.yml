@@ -10,10 +10,7 @@ services:
     ports:
       # Exposé uniquement en localhost pour le reverse proxy Nginx système
       - "127.0.0.1:8080:80"
-    dns:
-      # DNS OVH upstream (obtenu via resolvectl status sur l'hôte)
-      # Seul ce DNS peut résoudre gw.prd.api.enedis.fr (pas les DNS publics)
-      - 213.186.33.99
+    # Configuration épurée: aucune surcouche DNS, on utilise l'endpoint v3 directement.
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_SECRET=${APP_SECRET}

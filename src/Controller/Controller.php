@@ -326,10 +326,11 @@ class Controller extends AbstractController {
       $debug_params = $params;
       if (isset($debug_params['client_secret'])) $debug_params['client_secret'] = '***';
       if (isset($debug_params['code_verifier'])) $debug_params['code_verifier'] = '***';
-      error_log('[AUTH] Calling token endpoint: '.$this->getParameter('app_token_endpoint').' with params: '.json_encode($debug_params));
+  $endpoint = $this->getParameter('app_token_endpoint');
+  error_log('[AUTH] Calling token endpoint: '.$endpoint.' with params: '.json_encode($debug_params));
 
       $ch = curl_init();
-      curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_token_endpoint'));
+  curl_setopt($ch, CURLOPT_URL, $endpoint);
       curl_setopt($ch, CURLOPT_POST, true);
       curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -603,7 +604,7 @@ class Controller extends AbstractController {
     ];
 
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_token_endpoint_v3'));
+  curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_token_endpoint'));
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
