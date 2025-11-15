@@ -4,8 +4,8 @@ version: '3.8'
 services:
   # Service PHP/Symfony avec Apache
   app:
-    # Production: on consomme l'image construite par le pipeline (IMAGE_REF)
-    image: ${IMAGE_REF}
+    # Production: image construite par le pipeline CI/CD
+    image: ghcr.io/c-fevre/homey-enedis-proxy:latest
     container_name: cfe-homey-enedis-proxy-app
     ports:
       # Exposé uniquement en localhost pour le reverse proxy Nginx système

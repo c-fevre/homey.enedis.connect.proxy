@@ -220,15 +220,23 @@ class Controller extends AbstractController {
   # and then show a message that instructs the user to go back to their TV and wait.
   #[Route('/auth/redirect', name: 'myredirect', methods: ['GET'])]
   public function myredirect(Request $request): Response {
+    # Log de démarrage avec tous les paramètres reçus
+    $received_code = $request->query->get('code');
+    $received_state = $request->query->get('state');
+    $received_usage_point = $request->query->get('usage_point_id');
+    error_log('[AUTH] Redirect callback received - code: '.substr($received_code, 0, 20).'..., state: '.substr($received_state, 0, 20).'..., usage_point_id: '.$received_usage_point);
+
     # Check if error
     $error = $request->query->get('error');
     if($error) {
+      error_log('[AUTH] Error in callback: '.$error.' - '.$request->query->get('error_description'));
       return $this->html_error($error, $request->query->get('error_description'));
     }
 
     $get_state = $request->query->get('state');
     # Verify input params
     if($get_state == false || $request->query->get('code') == false) {
+      error_log('[AUTH] Missing required params in callback - state: '.($get_state ? 'present' : 'MISSING').', code: '.($request->query->get('code') ? 'present' : 'MISSING'));
       return $this->html_error('Invalid Request', 'Des paramètres manquent dans la requête');
     }
 
@@ -239,23 +247,36 @@ class Controller extends AbstractController {
       return $this->html_error('Invalid State', 'Le paramètre state n\'est pas valide');
     }
 
+        # Retrieve the state
+    $cache = new CachePG();
+    $state = $cache->get('state:'.$get_state);
+    error_log('[AUTH] State cache lookup for key "state:'.$get_state.'" - found: '.(is_null($state) ? 'NULL' : (is_array($state) ? 'array['.count($state).']' : gettype($state))));
+
     # Le cache retourne un array (sérialisé PHP), pas un objet
     if (!is_array($state)) {
+      error_log('[AUTH] State is not array - value: '.json_encode($state));
       return $this->html_error('Invalid State', 'Format de state invalide');
     }
 
+    error_log('[AUTH] State content: '.json_encode($state));
     $user_code = $state['user_code'] ?? null;
     $device_code = $state['device_code'] ?? null;
 
     if (!$user_code) {
+      error_log('[AUTH] user_code missing in state array');
       return $this->html_error('Invalid Request', 'user_code manquant dans le state');
     }
 
     # Look up the info from the user code provided in the state parameter
     $cache_content = $cache->get($user_code);
+    error_log('[AUTH] Cache content lookup for user_code "'.$user_code.'" - found: '.(is_null($cache_content) ? 'NULL' : (is_array($cache_content) ? 'array['.count($cache_content).']' : 'object')));
+    
     if($cache_content == false) {
+      error_log('[AUTH] cache_content not found or expired for user_code: '.$user_code);
       return $this->html_error('Invalid Request', 'user_code introuvable (expiré ou invalide)');
     }
+    
+    error_log('[AUTH] Cache content keys: '.json_encode(array_keys(is_array($cache_content) ? $cache_content : get_object_vars($cache_content))));
 
     $flow = $this->getParameter('app_flow');
     if (!$flow || (strtoupper($flow) != 'DEVICE')) {
@@ -302,6 +323,8 @@ class Controller extends AbstractController {
       $content_pkce_verifier = is_array($cache_content) ? ($cache_content['pkce_verifier'] ?? null) : ($cache_content->pkce_verifier ?? null);
       $content_device_code = is_array($cache_content) ? ($cache_content['device_code'] ?? null) : ($cache_content->device_code ?? null);
 
+      error_log('[AUTH] Extracted from cache_content - client_id: '.substr($content_client_id, 0, 10).'..., has client_secret: '.($content_client_secret ? 'yes' : 'no').', has pkce_verifier: '.($content_pkce_verifier ? 'yes' : 'no'));
+
       $params = [
         'grant_type' => 'authorization_code',
         'code' => $request->query->get('code'),
@@ -318,32 +341,43 @@ class Controller extends AbstractController {
       elseif($content_client_secret) {
         $params['client_secret'] = $content_client_secret;
       }
-      if($this->getParameter('app_pkce')) {
+      
+      $pkce_enabled = $this->getParameter('app_pkce');
+      if($pkce_enabled) {
+        error_log('[AUTH] PKCE enabled - adding code_verifier (length: '.strlen($content_pkce_verifier).')');
         $params['code_verifier'] = $content_pkce_verifier;
+      } else {
+        error_log('[AUTH] PKCE disabled - no code_verifier sent');
       }
 
       // Log des paramètres avant l'appel (masquer client_secret et code_verifier)
       $debug_params = $params;
-      if (isset($debug_params['client_secret'])) $debug_params['client_secret'] = '***';
-      if (isset($debug_params['code_verifier'])) $debug_params['code_verifier'] = '***';
-  $endpoint = $this->getParameter('app_token_endpoint');
-  error_log('[AUTH] Calling token endpoint: '.$endpoint.' with params: '.json_encode($debug_params));
+      if (isset($debug_params['client_secret'])) $debug_params['client_secret'] = '***MASKED***';
+      if (isset($debug_params['code_verifier'])) $debug_params['code_verifier'] = '***MASKED(len:'.strlen($params['code_verifier']).')***';
+      $endpoint = $this->getParameter('app_token_endpoint');
+      error_log('[AUTH] Calling token endpoint: '.$endpoint);
+      error_log('[AUTH] Token request params: '.json_encode($debug_params, JSON_UNESCAPED_SLASHES));
 
       $ch = curl_init();
-  curl_setopt($ch, CURLOPT_URL, $endpoint);
+      curl_setopt($ch, CURLOPT_URL, $endpoint);
       curl_setopt($ch, CURLOPT_POST, true);
       curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      if ($this->getParameter('kernel.debug')) {        
-        curl_setopt($ch, CURLOPT_VERBOSE, true);
-      }
+      // CURLOPT_VERBOSE désactivé pour éviter le spam de logs SSL
+      // if ($this->getParameter('kernel.debug')) {        
+      //   curl_setopt($ch, CURLOPT_VERBOSE, true);
+      // }
       $token_response = curl_exec($ch);
       $curl_error = curl_error($ch);
       $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
       curl_close($ch);
 
-      // Log détaillé pour debug
-      error_log('[AUTH] Token endpoint response - HTTP: '.$http_code.', cURL error: '.$curl_error.', Response: '.substr($token_response, 0, 500));
+      // Log de la réponse
+      error_log('[AUTH] Token endpoint HTTP response code: '.$http_code);
+      if ($curl_error) {
+        error_log('[AUTH] cURL error: '.$curl_error);
+      }
+      error_log('[AUTH] Token response body: '.substr($token_response, 0, 500));
 
       if ($curl_error) {
         $cache->delete($user_code);
