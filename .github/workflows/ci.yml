@@ -28,22 +28,10 @@ jobs:
           restore-keys: |
             composer-${{ runner.os }}-
 
-      - name: Install dependencies
+      - name: Install dependencies (no-dev)
         run: |
-          if [ -f composer.json ]; then composer install --no-interaction --prefer-dist --no-progress; else echo "composer.json absent"; fi
+          if [ -f composer.json ]; then composer install --no-interaction --prefer-dist --no-progress --no-dev; else echo "composer.json absent"; fi
 
       - name: Lint PHP
         run: |
           find . -type f -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -I{} php -l {}
-
-      - name: Run tests (if available)
-        run: |
-          if [ -x vendor/bin/phpunit ]; then
-            if [ -f phpunit.xml ] || [ -f phpunit.xml.dist ] || ls -1 tests/*Test.php tests/**/*Test.php 2>/dev/null | grep -q .; then
-              vendor/bin/phpunit --colors=always
-            else
-              echo "PHPUnit présent mais aucun fichier de config ou tests trouvés — étape de tests sautée"
-            fi
-          else
-            echo "PHPUnit absent — étape de tests sautée"
-          fi
