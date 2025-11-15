@@ -14,6 +14,11 @@ services:
       # DNS publics pour résoudre gw.prd.api.enedis.fr et autres domaines externes
       - 8.8.8.8
       - 1.1.1.1
+    dns_opt:
+      # Options DNS pour forcer la résolution directe
+      - use-vc
+      - no-tld-query
+    dns_search: []
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_SECRET=${APP_SECRET}
@@ -59,6 +64,9 @@ services:
 networks:
   enedis-network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-enedis
+    enable_ipv6: false
 
 volumes:
   postgres_data:
