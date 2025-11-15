@@ -192,20 +192,27 @@ class Controller extends AbstractController {
 
     // TODO: might need to make this configurable to support OAuth servers that have
     // custom parameters for the auth endpoint
+    # Construction de l'URL selon spec Enedis (ordre et params exacts)
+    # https://mon-compte-particulier.enedis.fr/dataconnect/v1/oauth2/authorize?client_id=xxx&duration=xxx&response_type=code&state=xxx
     $query = [
-      'response_type' => 'code',
       'client_id' => $cache_content['client_id'],
-      'state' => $state,
       'duration' => $this->getParameter('app_duration'),
+      'response_type' => 'code',
+      'state' => $state,
     ];
-    if($cache_content['scope']) {
-      $query['scope'] = $cache_content['scope'];
-    }
-    if($this->getParameter('app_pkce')) {
-      $pkce_challenge = Helpers::base64_urlencode(hash('sha256', $cache_content['pkce_verifier'], true));
-      $query['code_challenge'] = $pkce_challenge;
-      $query['code_challenge_method'] = 'S256';
-    }
+    
+    # Note: Enedis ne documente PAS le paramètre 'scope' dans leur spécification officielle
+    # On le retire pour conformité stricte à la documentation
+    # if($cache_content['scope']) {
+    #   $query['scope'] = $cache_content['scope'];
+    # }
+    
+    # PKCE non supporté par Enedis selon documentation
+    # if($this->getParameter('app_pkce')) {
+    #   $pkce_challenge = Helpers::base64_urlencode(hash('sha256', $cache_content['pkce_verifier'], true));
+    #   $query['code_challenge'] = $pkce_challenge;
+    #   $query['code_challenge_method'] = 'S256';
+    # }
 
     $authURL = $this->getParameter('app_authorization_endpoint') . '?' . http_build_query($query);
 
