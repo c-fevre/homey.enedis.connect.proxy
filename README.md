@@ -127,3 +127,8 @@ If the servers are using the client_credentials flow (if `FLOW` is unset in `.en
 curl --header "Authorization: Bearer 6czyedyLUHvyjtWZuWwBLkXNZhzk9QLP9Cip5NPhFNmc8znWoPipnW" \
     "http://localhost:8080/data/proxy/path1/path2?usage_point_id=1234567890abcd&param1=value&param2=value"
 ```
+
+Notes
+-----
+
+- Avertissement Apache AH00558: Le message "Could not reliably determine the server's fully qualified domain name" est supprimé automatiquement via un ServerName global (ServerName localhost) ajouté durant le build de l'image Docker.

@@ -27,6 +27,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Configuration Apache
 RUN a2enmod rewrite headers ssl
 
+# Supprimer l'avertissement "Could not reliably determine the server's fully qualified domain name"
+# en définissant un ServerName global (avant le démarrage d'Apache)
+RUN echo "ServerName localhost" > /etc/apache2/conf-available/servername.conf \
+    && a2enconf servername
+
 # Copier la configuration Apache personnalisée
 COPY docker/apache/vhost.conf /etc/apache2/sites-available/000-default.conf
 
