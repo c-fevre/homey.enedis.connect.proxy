@@ -1,0 +1,14 @@
+# Fichiers Docker
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml
+.dockerignore
+
+# Volumes Docker
+postgres_data/
+mongo_data/
+
+# Fichiers de configuration générés
+.env
+.env.local
+.env.*.local

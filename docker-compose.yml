@@ -1,0 +1,64 @@
+# Version de Docker Compose
+version: '3.8'
+
+services:
+  # Service PHP/Symfony avec Apache
+  app:
+    # L'image utilisée en prod est fournie par le pipeline (IMAGE_REF)
+    # En local/dev, on peut builder depuis le Dockerfile.
+    image: ${IMAGE_REF:-cfe-homey-enedis-proxy:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cfe-homey-enedis-proxy-app
+    ports:
+      # Exposé uniquement en localhost pour le reverse proxy Nginx système
+      - "127.0.0.1:8080:80"
+    volumes:
+      # Mount du code source pour le dev (hot reload)
+      - .:/var/www/html
+      # Exclure vendor pour éviter les conflits
+      - /var/www/html/vendor
+    environment:
+      - APP_ENV=${APP_ENV:-dev}
+      - APP_SECRET=${APP_SECRET}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_ADDRESS}:${DB_PORT}/${DB_NAME}
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - enedis-network
+    restart: unless-stopped
+
+  # Base de données PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: cfe-homey-enedis-proxy-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-enedis_proxy}
+      POSTGRES_USER: ${DB_USER:-enedis_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-enedis_password}
+    # Port PostgreSQL NON exposé publiquement (accès interne uniquement)
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      # Persistance des données
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-enedis_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - enedis-network
+    restart: unless-stopped
+
+networks:
+  enedis-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

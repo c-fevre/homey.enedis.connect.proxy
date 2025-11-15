@@ -10,9 +10,11 @@ class CachePG {
     }
 
     public function connect($dbname, $user, $password, $address, $port) {
-        $dsn = "pgsql:host={$address};port={$port};dbname={$dbname}";
+        $dsn = "pgsql:host={$address};port={$port};dbname={$dbname};sslmode=prefer";
         $this->pdo = new \PDO($dsn, $user, $password, [
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_EMULATE_PREPARES => false, // Protection injection SQL
+            \PDO::ATTR_STRINGIFY_FETCHES => false,
         ]);
         // Création de la table 'cache' si elle n'existe pas
         $this->pdo->exec("
@@ -21,6 +23,7 @@ class CachePG {
                 value TEXT NOT NULL,
                 expire_at TIMESTAMP NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_expire_at ON cache(expire_at);
         ");
         $this->cleanup();
     }
@@ -80,12 +83,7 @@ class CachePG {
         $stmt->execute([':key' => $key]);
     }
 
-    public function dump() {
-        $stmt = $this->pdo->query("SELECT * FROM cache");
-        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-            var_dump($row);
-        }
-    }
+    // Méthode dump() supprimée pour sécurité (exposition de données sensibles)
 
     public function cleanup() {
         $now = (new \DateTime())->format('Y-m-d H:i:s');

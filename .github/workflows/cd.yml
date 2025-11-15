@@ -1,0 +1,105 @@
+name: CD - Déploiement
+
+on:
+  workflow_run:
+    workflows: ["CI - Tests et Qualité"]
+    types: [completed]
+    branches: [ main ]
+  push:
+    tags: [ 'v*' ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name:  Build & Push Docker
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login vers GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extraction des métadonnées
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build et Push de l'image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Output image name
+        id: image
+        run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
+
+  deploy:
+    name:  Déploiement
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+      - name: Copier docker-compose.yml sur le VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.PORT }}
+          source: "docker-compose.yml"
+          target: "/home/cfe-user/cfe-homey-enedis-proxy"
+          strip_components: 0
+      - name: Déploiement sur VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.PORT }}
+          timeout: 30s
+          command_timeout: 30m
+          script: |
+            set -e
+            APP_DIR="/home/cfe-user/cfe-homey-enedis-proxy"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            docker pull ${{ needs.build-and-push.outputs.image }}:latest
+            docker compose down || true
+            IMAGE_REF="${{ needs.build-and-push.outputs.image }}:latest" docker compose up -d --force-recreate --remove-orphans
+            docker image prune -f
+      - name: Vérification du déploiement
+        run: |
+          echo "Déploiement terminé. Nginx/SSL gérés par cfe-server-infra"
+          echo "URL: https://homey-enedis-proxy.clement-fevre.com"
+          echo "Health check: https://homey-enedis-proxy.clement-fevre.com/health (si exposé)"

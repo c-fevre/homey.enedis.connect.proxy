@@ -69,12 +69,8 @@ class Controller extends AbstractController {
   }
 
   private function connectCache() {
-    if ($this->getParameter('app_db_type') == "mongodb") {
-      return new Cache($this->getParameter('app_db_name'), $this->getParameter('app_db_user'), $this->getParameter('app_db_password'), $this->getParameter('app_db_address'), $this->getParameter('app_db_port'));
-    }
-    else {
-      return new CachePG($this->getParameter('app_db_name'), $this->getParameter('app_db_user'), $this->getParameter('app_db_password'), $this->getParameter('app_db_address'), $this->getParameter('app_db_port'));
-    }
+    // PostgreSQL uniquement
+    return new CachePG($this->getParameter('app_db_name'), $this->getParameter('app_db_user'), $this->getParameter('app_db_password'), $this->getParameter('app_db_address'), $this->getParameter('app_db_port'));
   }
 
   # A device submits a request here (POST) to generate a new device and user code
@@ -106,7 +102,8 @@ class Controller extends AbstractController {
       'device_code' => $device_code,
       'pkce_verifier' => $pkce_verifier,
     ];
-    $user_code = Helpers::random_alpha_string(4).'-'.Helpers::random_alpha_string(4);
+    // Génère un code avec haute entropie (format XXXX-XXXX-XXXX = 12 caractères)
+    $user_code = Helpers::generate_secure_user_code();
 
     $cache = $this->connectCache();
     $cache->set(str_replace('-', '', $user_code), $cache_content, 300); # store without the hyphen
@@ -147,13 +144,23 @@ class Controller extends AbstractController {
       return $this->html_error('invalid_request', 'Aucun code n\'a été entré');
     }
 
-    # Remove hyphens and convert to uppercase to make it easier for users to enter the code
+    # Validation de format et longueur du code (sécurité)
     $user_code = strtoupper(str_replace('-', '', $user_code));
+    
+    # Le code doit contenir uniquement des caractères alphanumériques autorisés
+    if (!preg_match('/^[A-Z2-9]+$/', $user_code)) {
+      return $this->html_error('invalid_request', 'Code invalide : caractères non autorisés');
+    }
+    
+    # Vérifier la longueur (24 caractères attendus pour le nouveau format haute sécurité)
+    if (strlen($user_code) < 8 || strlen($user_code) > 32) {
+      return $this->html_error('invalid_request', 'Code invalide : longueur incorrecte');
+    }
 
     $cache = $this->connectCache();
     $cache_content = $cache->get($user_code);
     if(!$cache_content) {
-      return $this->html_error('invalid_request', 'Code non valide');
+      return $this->html_error('invalid_request', 'Code non valide ou expiré');
     }
 
     $state = bin2hex(random_bytes(16));
@@ -172,15 +179,15 @@ class Controller extends AbstractController {
     // custom parameters for the auth endpoint
     $query = [
       'response_type' => 'code',
-      'client_id' => $cache_content->client_id,
+      'client_id' => $cache_content['client_id'],
       'state' => $state,
       'duration' => $this->getParameter('app_duration'),
     ];
-    if($cache_content->scope) {
-      $query['scope'] = $cache_content->scope;
+    if($cache_content['scope']) {
+      $query['scope'] = $cache_content['scope'];
     }
     if($this->getParameter('app_pkce')) {
-      $pkce_challenge = Helpers::base64_urlencode(hash('sha256', $cache_content->pkce_verifier, true));
+      $pkce_challenge = Helpers::base64_urlencode(hash('sha256', $cache_content['pkce_verifier'], true));
       $query['code_challenge'] = $pkce_challenge;
       $query['code_challenge_method'] = 'S256';
     }

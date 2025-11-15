@@ -1,7 +1,9 @@
 OAuth 2.0 Device Flow Proxy Server for Enedis
 =============================================
 
-An OAuth 2.0 Device Code flow for [DomoticzLinky](https://github.com/guillaumezin/DomoticzLinky), a [Domoticz](https://www.domoticz.com/) plugin, adapted to [Enedis data hub](https://datahub-enedis.fr).
+An OAuth 2.0 Device Code Flow proxy for [Homey](https://homey.app/fr-fr/app/com.clement-fevre.enedis.connect/Mon-Suivi-Conso-Enedis/) plugin, adapted to the [Enedis Data Hub](https://datahub-enedis.fr).
+
+Un proxy OAuth 2.0 « Device Code Flow » pour Homey, adapté au Data Hub Enedis.
 
 This project if a fork of https://github.com/aaronpk/Device-Flow-Proxy-Server, a big thanks to him.
 

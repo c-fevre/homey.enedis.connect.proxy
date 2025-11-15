@@ -1,0 +1,537 @@
+{
+    "info": {
+        "_postman_id": "enedis-oauth-proxy-flow",
+        "name": "Enedis OAuth Proxy - Complete Flow",
+        "description": "Collection complète pour tester le Device Authorization Flow du proxy OAuth Enedis pour Homey Pro.\n\n** Sécurité maximale:**\n- User code: 24 caractères (format XXXXXX-XXXXXX-XXXXXX-XXXXXX)\n- Entropie: ~120 bits (32^24 = 1.2 × 10^36 combinaisons)\n- Temps brute force: ~10^19 années @ 120M req/sec (impossible)\n- Caractères URL-safe: A-Z + 2-9 (sans 0/O/I/1)\n- Validation stricte: format, longueur, caractères autorisés\n- Device code: 64 caractères hexadécimaux (256 bits)\n\n** Variables d'environnement requises:**\n- `base_url`: http://localhost:8080\n- `client_id`: FILLME\n- `client_secret`: FILLME\n\n** Workflow complet:**\n1. Générer un code (POST /device/code)\n2. Afficher le user_code à l'utilisateur\n3. L'utilisateur visite la page web (/device?code=XXX)\n4. Polling sur /device/token jusqu'à authorization_pending\n5. L'utilisateur valide sur Enedis\n6. Récupération de l'access_token\n7. Appel API Enedis avec le token\n8. Refresh du token\n\n** Note:** Les requêtes 4-6 nécessitent une vraie validation utilisateur sur le portail Enedis.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Device Authorization Request",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "// Sauvegarder automatiquement les codes retournés",
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    pm.environment.set('device_code', response.device_code);",
+                            "    pm.environment.set('user_code', response.user_code);",
+                            "    pm.environment.set('verification_uri', response.verification_uri);",
+                            "    pm.environment.set('expires_in', response.expires_in);",
+                            "    pm.environment.set('interval', response.interval);",
+                            "    ",
+                            "    console.log(' Device Code:', response.device_code);",
+                            "    console.log(' User Code:', response.user_code);",
+                            "    console.log(' Verification URI:', response.verification_uri + '?code=' + response.user_code);",
+                            "    console.log('  Expires in:', response.expires_in, 'seconds');",
+                            "    console.log(' Polling interval:', response.interval, 'seconds');",
+                            "    ",
+                            "    pm.test('Device code generated', () => {",
+                            "        pm.expect(response.device_code).to.be.a('string').and.to.have.lengthOf(64);",
+                            "    });",
+                            "    ",
+                            "    pm.test('User code has maximum security format (24 chars)', () => {",
+                            "        const userCode = response.user_code.replace(/-/g, '');",
+                            "        pm.expect(userCode).to.be.a('string').and.to.have.lengthOf(24);",
+                            "        pm.expect(userCode).to.match(/^[A-Z2-9]+$/);",
+                            "        console.log('Entropie: ~120 bits (inviolable par brute force)');",
+                            "    });",
+                            "    ",
+                            "    pm.test('Response contains all required fields', () => {",
+                            "        pm.expect(response).to.have.property('verification_uri');",
+                            "        pm.expect(response).to.have.property('expires_in');",
+                            "        pm.expect(response).to.have.property('interval');",
+                            "    });",
+                            "} else {",
+                            "    console.error(' Request failed:', pm.response.json());",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/x-www-form-urlencoded"
+                    }
+                ],
+                "body": {
+                    "mode": "urlencoded",
+                    "urlencoded": [
+                        {
+                            "key": "client_id",
+                            "value": "{{client_id}}",
+                            "description": "Client ID Enedis (configuré dans .env)"
+                        },
+                        {
+                            "key": "client_secret",
+                            "value": "{{client_secret}}",
+                            "description": "Client Secret Enedis (configuré dans .env)"
+                        },
+                        {
+                            "key": "scope",
+                            "value": "consumption_load_curve production_load_curve",
+                            "description": "Scopes demandés (consommation et/ou production)"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{base_url}}/device/code",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "device",
+                        "code"
+                    ]
+                },
+                "description": "**Étape 1 : Initier le Device Authorization Flow**\n\nL'application Homey appelle cette endpoint pour générer:\n- Un `device_code` (64 caractères hex) utilisé pour le polling\n- Un `user_code` (format XXXX-XXXX-XXXX) affiché à l'utilisateur\n- L'URL de vérification où l'utilisateur doit aller\n\n**Sécurité améliorée:**\n- User code de 12 caractères (vs 8 avant)\n- Entropie: ~60 bits (32^12 combinaisons possibles)\n- Caractères URL-safe sans ambiguïté visuelle\n\n**Réponse attendue (200 OK):**\n```json\n{\n  \"device_code\": \"c3b576844a7c61c50d0c073048c1714e...\",\n  \"user_code\": \"A3K9-7QRT-M5WX\",\n  \"verification_uri\": \"http://localhost:8080/device\",\n  \"expires_in\": 300,\n  \"interval\": 1\n}\n```"
+            },
+            "response": []
+        },
+        {
+            "name": "2. User Verification Page (Browser)",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Page loads successfully', () => {",
+                            "    pm.response.to.have.status(200);",
+                            "});",
+                            "",
+                            "pm.test('HTML contains user code in form', () => {",
+                            "    pm.expect(pm.response.text()).to.include('user_code');",
+                            "});",
+                            "",
+                            "pm.test('Contains Enedis authorization button', () => {",
+                            "    pm.expect(pm.response.text()).to.include('blanc-txtbleu.png');",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/device?code={{user_code}}",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "device"
+                    ],
+                    "query": [
+                        {
+                            "key": "code",
+                            "value": "{{user_code}}",
+                            "description": "User code à pré-remplir dans le formulaire"
+                        }
+                    ]
+                },
+                "description": "**Étape 2 : Page de vérification (navigateur web)**\n\nL'utilisateur ouvre cette URL dans son navigateur. La page affiche:\n- Un formulaire avec le user_code pré-rempli\n- Des instructions pour se connecter à Enedis\n- Un bouton \"Accéder à mon espace Enedis\"\n\n** Dans Homey:**\nL'app doit afficher le user_code et ouvrir automatiquement cette URL dans le navigateur par défaut.\n\n** Validation de sécurité:**\n- Le code accepte uniquement [A-Z2-9]\n- Longueur: 8-16 caractères (compatible ancien/nouveau format)\n- Expire après 5 minutes (300 secondes)\n\n**Note:** Cette requête GET simule ce que l'utilisateur voit. Dans la vraie utilisation, c'est un navigateur web."
+            },
+            "response": []
+        },
+        {
+            "name": "3. Token Polling - authorization_pending",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "const response = pm.response.json();",
+                            "",
+                            "if (response.error === 'authorization_pending') {",
+                            "    console.log(' Authorization pending - L\\'utilisateur n\\'a pas encore validé sur Enedis');",
+                            "    pm.test('Polling status: authorization_pending', () => {",
+                            "        pm.expect(response.error).to.equal('authorization_pending');",
+                            "    });",
+                            "} else if (response.error === 'slow_down') {",
+                            "    console.log(' Slow down - Vous pollez trop rapidement');",
+                            "    pm.test('Rate limit: slow_down', () => {",
+                            "        pm.expect(response.error).to.equal('slow_down');",
+                            "    });",
+                            "} else if (response.error === 'expired_token') {",
+                            "    console.error('  Token expiré - Recommencer le flow depuis l\\'étape 1');",
+                            "    pm.test('Token expired', () => {",
+                            "        pm.expect(response.error).to.equal('expired_token');",
+                            "    });",
+                            "} else if (response.access_token) {",
+                            "    console.log(' Access token reçu !');",
+                            "    pm.environment.set('access_token', response.access_token);",
+                            "    pm.environment.set('refresh_token', response.refresh_token);",
+                            "    pm.environment.set('token_type', response.token_type);",
+                            "    pm.test('Access token received', () => {",
+                            "        pm.expect(response.access_token).to.be.a('string');",
+                            "    });",
+                            "} else {",
+                            "    console.error(' Unexpected response:', response);",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/x-www-form-urlencoded"
+                    }
+                ],
+                "body": {
+                    "mode": "urlencoded",
+                    "urlencoded": [
+                        {
+                            "key": "grant_type",
+                            "value": "urn:ietf:params:oauth:grant-type:device_code",
+                            "description": "Type de grant OAuth 2.0 Device Flow"
+                        },
+                        {
+                            "key": "device_code",
+                            "value": "{{device_code}}",
+                            "description": "Device code reçu à l'étape 1"
+                        },
+                        {
+                            "key": "client_id",
+                            "value": "{{client_id}}",
+                            "description": "Client ID Enedis"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{base_url}}/device/token",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "device",
+                        "token"
+                    ]
+                },
+                "description": "**Étape 3 : Polling pour obtenir l'access token**\n\nL'application Homey doit appeler cette endpoint en boucle (toutes les `interval` secondes) jusqu'à recevoir l'access token.\n\n**Réponses possibles:**\n\n1. **authorization_pending (428)** - L'utilisateur n'a pas encore validé\n```json\n{\n  \"error\": \"authorization_pending\",\n  \"error_description\": \"The authorization request is still pending\"\n}\n```\n→ **Action:** Attendre `interval` secondes et réessayer\n\n2. **slow_down (428)** - Vous pollez trop rapidement\n```json\n{\n  \"error\": \"slow_down\",\n  \"error_description\": \"You are polling too frequently\"\n}\n```\n→ **Action:** Augmenter l'interval de 5 secondes\n\n3. **expired_token (400)** - Le code a expiré (>5 min)\n```json\n{\n  \"error\": \"expired_token\",\n  \"error_description\": \"The device code has expired\"\n}\n```\n→ **Action:** Recommencer depuis l'étape 1\n\n4. **Success (200)** - Token reçu !\n```json\n{\n  \"access_token\": \"eyJ...\",\n  \"refresh_token\": \"...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 12600\n}\n```\n→ **Action:** Stocker les tokens et passer à l'étape 4\n\n** Important:** Pendant ce polling, l'utilisateur DOIT aller sur le portail Enedis et valider le consentement."
+            },
+            "response": []
+        },
+        {
+            "name": "4. API Call - Get Consumption Data",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    console.log(' Données de consommation récupérées');",
+                            "    console.log(' Données:', JSON.stringify(response, null, 2));",
+                            "    ",
+                            "    pm.test('Status code is 200', () => {",
+                            "        pm.response.to.have.status(200);",
+                            "    });",
+                            "    ",
+                            "    pm.test('Response contains data', () => {",
+                            "        pm.expect(response).to.be.an('object');",
+                            "    });",
+                            "} else if (pm.response.code === 401) {",
+                            "    console.error(' Token invalide ou expiré - Utilisez refresh token');",
+                            "} else {",
+                            "    console.error(' Erreur API:', pm.response.json());",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}",
+                        "description": "Access token obtenu à l'étape 3"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/data/metering_data_v5/consumption_load_curve",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "data",
+                        "metering_data_v5",
+                        "consumption_load_curve"
+                    ],
+                    "query": [
+                        {
+                            "key": "usage_point_id",
+                            "value": "12345678901234",
+                            "description": "PDL (Point de Livraison) - 14 chiffres",
+                            "disabled": true
+                        },
+                        {
+                            "key": "start",
+                            "value": "2024-01-01",
+                            "description": "Date de début (YYYY-MM-DD)",
+                            "disabled": true
+                        },
+                        {
+                            "key": "end",
+                            "value": "2024-01-31",
+                            "description": "Date de fin (YYYY-MM-DD)",
+                            "disabled": true
+                        }
+                    ]
+                },
+                "description": "**Étape 4 : Appel API Enedis pour récupérer les données**\n\nUtilise l'access token pour appeler l'API Enedis et récupérer les données de consommation.\n\n** Endpoints disponibles:**\n- `/data/metering_data_v5/consumption_load_curve` - Courbe de charge (consommation)\n- `/data/metering_data_v5/production_load_curve` - Courbe de charge (production)\n- `/data/metering_data_v5/daily_consumption` - Consommation journalière\n- `/data/metering_data_v5/daily_production` - Production journalière\n\n** Headers requis:**\n- `Authorization: Bearer {access_token}`\n\n**📝 Query parameters:**\n- `usage_point_id` : PDL (14 chiffres)\n- `start` : Date de début (YYYY-MM-DD)\n- `end` : Date de fin (YYYY-MM-DD)\n\n** Note:** Le proxy fait automatiquement le relay vers l'API Enedis officielle."
+            },
+            "response": []
+        },
+        {
+            "name": "5. Refresh Access Token",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "if (pm.response.code === 200) {",
+                            "    const response = pm.response.json();",
+                            "    pm.environment.set('access_token', response.access_token);",
+                            "    pm.environment.set('refresh_token', response.refresh_token);",
+                            "    ",
+                            "    console.log(' Token refreshed successfully');",
+                            "    console.log(' New access token:', response.access_token.substring(0, 20) + '...');",
+                            "    ",
+                            "    pm.test('New access token received', () => {",
+                            "        pm.expect(response.access_token).to.be.a('string');",
+                            "    });",
+                            "    ",
+                            "    pm.test('New refresh token received', () => {",
+                            "        pm.expect(response.refresh_token).to.be.a('string');",
+                            "    });",
+                            "} else {",
+                            "    console.error(' Token refresh failed:', pm.response.json());",
+                            "}"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/x-www-form-urlencoded"
+                    }
+                ],
+                "body": {
+                    "mode": "urlencoded",
+                    "urlencoded": [
+                        {
+                            "key": "grant_type",
+                            "value": "refresh_token",
+                            "description": "Type de grant pour refresh"
+                        },
+                        {
+                            "key": "refresh_token",
+                            "value": "{{refresh_token}}",
+                            "description": "Refresh token obtenu précédemment"
+                        },
+                        {
+                            "key": "client_id",
+                            "value": "{{client_id}}",
+                            "description": "Client ID Enedis"
+                        },
+                        {
+                            "key": "client_secret",
+                            "value": "{{client_secret}}",
+                            "description": "Client Secret Enedis"
+                        }
+                    ]
+                },
+                "url": {
+                    "raw": "{{base_url}}/device/token",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "device",
+                        "token"
+                    ]
+                },
+                "description": "**Étape 5 : Rafraîchir l'access token**\n\nQuand l'access token expire (après ~3.5 heures), utilise le refresh token pour en obtenir un nouveau sans redemander à l'utilisateur de se connecter.\n\n**Réponse attendue (200 OK):**\n```json\n{\n  \"access_token\": \"eyJ...\",\n  \"refresh_token\": \"...\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 12600\n}\n```\n\n** Important:**\n- Le refresh token a une durée de vie de 3 ans (configurable via DURATION dans .env)\n- Stocker le nouveau refresh_token reçu\n- Si le refresh échoue, l'utilisateur doit recommencer le flow complet"
+            },
+            "response": []
+        },
+        {
+            "name": "6. Health Check",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Proxy is running', () => {",
+                            "    pm.response.to.have.status(200);",
+                            "});",
+                            "",
+                            "pm.test('Contains application title', () => {",
+                            "    pm.expect(pm.response.text()).to.include('Mon Suivi Conso Enedis');",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        ""
+                    ]
+                },
+                "description": "**Test de santé du proxy**\n\nVérifie que le serveur proxy est bien en ligne et répond correctement.\n\nRéponse attendue: Page HTML d'accueil avec titre \"Device Flow Proxy Server pour Homey\"."
+            },
+            "response": []
+        },
+        {
+            "name": "7. Test Security - Invalid Code Format",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Rejects invalid characters', () => {",
+                            "    pm.response.to.have.status(200); // HTML error page",
+                            "    pm.expect(pm.response.text()).to.include('caractères non autorisés');",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/auth/verify_code?code=HACK<script>",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "auth",
+                        "verify_code"
+                    ],
+                    "query": [
+                        {
+                            "key": "code",
+                            "value": "HACK<script>",
+                            "description": "Code malveillant pour tester la validation"
+                        }
+                    ]
+                },
+                "description": "**Test de sécurité : Injection de caractères invalides**\n\nVérifie que le proxy rejette les codes contenant des caractères non autorisés (tentative d'injection XSS).\n\n**Validation appliquée:**\n- Regex: `/^[A-Z2-9]+$/`\n- Longueur: 8-16 caractères\n- Rejet de: `<>\"'&%$#@!`\n\nRéponse attendue: Erreur \"Code invalide : caractères non autorisés\""
+            },
+            "response": []
+        },
+        {
+            "name": "8. Test Security - Code Too Short",
+            "event": [
+                {
+                    "listen": "test",
+                    "script": {
+                        "exec": [
+                            "pm.test('Rejects code too short', () => {",
+                            "    pm.response.to.have.status(200); // HTML error page",
+                            "    pm.expect(pm.response.text()).to.include('longueur incorrecte');",
+                            "});"
+                        ],
+                        "type": "text/javascript"
+                    }
+                }
+            ],
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/auth/verify_code?code=ABC",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "auth",
+                        "verify_code"
+                    ],
+                    "query": [
+                        {
+                            "key": "code",
+                            "value": "ABC",
+                            "description": "Code trop court (3 caractères)"
+                        }
+                    ]
+                },
+                "description": "**Test de sécurité : Code trop court**\n\nVérifie que le proxy rejette les codes d'une longueur insuffisante.\n\nRéponse attendue: Erreur \"Code invalide : longueur incorrecte\""
+            },
+            "response": []
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Vérifier que les variables d'environnement sont définies",
+                    "if (!pm.environment.get('base_url')) {",
+                    "    console.error(' Variable manquante: base_url');",
+                    "}",
+                    "if (!pm.environment.get('client_id')) {",
+                    "    console.error(' Variable manquante: client_id');",
+                    "}",
+                    "if (!pm.environment.get('client_secret')) {",
+                    "    console.error(' Variable manquante: client_secret');",
+                    "}"
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8080",
+            "type": "string"
+        },
+        {
+            "key": "client_id",
+            "value": "FILLME",
+            "type": "string"
+        },
+        {
+            "key": "client_secret",
+            "value": "FILLME",
+            "type": "string"
+        }
+    ]
+}

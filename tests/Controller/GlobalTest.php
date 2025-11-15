@@ -13,7 +13,7 @@ class GlobalTest extends WebTestCase
         $client->request('GET', '/');
         
         $this->assertResponseIsSuccessful('/ response');
-        $this->assertSelectorTextContains('h1', 'Obtention de consentement pour DomoticzLinky', '/ text');
+        $this->assertSelectorTextContains('h1', 'Obtention de consentement pour Homey', '/ text');
     }
 
     public function testDevice(): void
@@ -138,7 +138,7 @@ class GlobalTest extends WebTestCase
 
         $client->request('GET', '/auth/redirect', ['code' => $jsonResponseCode['user_code'], 'state' => $redirect_params['state'], 'usage_point_id' => $usage_point_id]);
         //dump($client->getResponse()->getContent());
-        $this->assertAnySelectorTextContains('h2', 'Le consentement a bien été obtenu pour le plugin DomoticzLinky ! Vous pouvez fermer cette page et retourner sur Domoticz.', '/auth/redirect signed in (FLOW!=DEVICE)');
+        $this->assertAnySelectorTextContains('h2', 'Le consentement a bien été obtenu pour le plugin Homey ! Vous pouvez fermer cette page et retourner sur redirecturi.', '/auth/redirect signed in (FLOW!=DEVICE)');
 
         $client->request('POST', '/device/token', ['client_id' => $client_id, 'grant_type' => 'urn:ietf:params:oauth:grant-type:device_code', 'device_code' => $jsonResponseCode['device_code']]);
         //dump($client->getResponse()->getContent());
@@ -223,7 +223,7 @@ class GlobalTest extends WebTestCase
         //dump($client->getResponse()->getContent());
         $this->assertSelectorTextContains('p', 'Il y a eu une erreur', '/auth/redirect invalid access_token (FLOW==DEVICE)');
 
-        $_ENV['TOKEN_ENDPOINT'] = 'http://opensrcdev.alwaysdata.net/domoticzlinkyconnect/device/token';
+        $_ENV['TOKEN_ENDPOINT'] = 'http://opensrcdev.alwaysdata.net/Homeyconnect/device/token';
         print($_ENV['TOKEN_ENDPOINT'] . " must be in debug mode for tests to work");
         
         $client->request('POST', '/device/code', [ 'client_id' => $client_id ]);

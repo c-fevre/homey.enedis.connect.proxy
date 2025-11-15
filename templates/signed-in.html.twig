@@ -4,7 +4,9 @@
 {% block title %}Consentement obtenu{% endblock %}
 
 {% block content %}
-<h2>Le consentement a bien été obtenu pour le plugin DomoticzLinky ! Vous pouvez fermer cette page et retourner sur Domoticz.</h2>
+<h2>✅ Consentement obtenu avec succès !</h2>
+<p>Le consentement a bien été enregistré pour l'application <strong>Mon Suivi Conso Enedis</strong> sur votre Homey Pro.</p>
+<p>Vous pouvez maintenant fermer cette page et retourner sur l'application Homey. Vos données de consommation Linky seront bientôt disponibles.</p>
 
 <script>
 window.history.replaceState({}, false, "{{ url('device') }}"');

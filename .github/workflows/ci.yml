@@ -1,0 +1,41 @@
+name: CI - Tests et Qualité
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  php-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, intl, pdo_pgsql, curl, json, openssl
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          if [ -f composer.json ]; then composer install --no-interaction --prefer-dist --no-progress; else echo "composer.json absent"; fi
+
+      - name: Lint PHP
+        run: |
+          find . -type f -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -I{} php -l {}
+
+      - name: Run tests (if available)
+        run: |
+          if [ -f vendor/bin/phpunit ]; then vendor/bin/phpunit --colors=always; else echo "PHPUnit absent"; fi

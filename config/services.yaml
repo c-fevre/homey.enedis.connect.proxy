@@ -13,9 +13,7 @@ parameters:
     env(DISABLE_DATA_ENPOINT_AUTH): ''    
     env(PKCE): ''
     env(FLOW): ''
-    env(DB_TYPE): ''
     env(DURATION): 'P3Y'
-    env(MONGODB_PORT): '5432'
 
     env(TRUSTED_PROXIES): ''
     
@@ -38,7 +36,6 @@ parameters:
     app_db_user: '%env(string:DB_USER)%'
     app_db_password: '%env(string:DB_PASSWORD)%'
     app_db_name: '%env(string:DB_NAME)%'
-    app_db_type: '%env(string:DB_TYPE)%'
 
 #    router.request_context.scheme: 'https'
 #    asset.request_context.secure: true

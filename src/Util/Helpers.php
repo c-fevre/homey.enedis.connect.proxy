@@ -28,10 +28,26 @@ class Helpers {
   }
 
   public static function random_alpha_string($len) {
-    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    // Caractères URL-safe : majuscules + chiffres sauf 0/O/I/1 pour éviter confusion
+    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     $str = '';
     for($i=0; $i<$len; $i++)
       $str .= substr($chars, random_int(0, strlen($chars)-1), 1);
     return $str;
+  }
+  
+  /**
+   * Génère un code utilisateur sécurisé avec très haute entropie
+   * Format: XXXXXX-XXXXXX-XXXXXX-XXXXXX (24 caractères + 3 tirets)
+   * Entropie: ~120 bits (32^24 = 1.2 × 10^36 combinaisons)
+   * Temps brute force: ~10^19 ans @ 120M req/sec
+   * URL-safe, lisible et impossible à deviner
+   */
+  public static function generate_secure_user_code() {
+    // 24 caractères pour une sécurité maximale
+    return self::random_alpha_string(6) . '-' . 
+           self::random_alpha_string(6) . '-' . 
+           self::random_alpha_string(6) . '-' . 
+           self::random_alpha_string(6);
   }
 }
