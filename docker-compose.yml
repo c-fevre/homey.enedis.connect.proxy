@@ -1,5 +1,4 @@
-# Version de Docker Compose
-version: '3.8'
+# Docker Compose (format v2+ recommandé, clé `version` obsolète)
 
 services:
   # Service PHP/Symfony avec Apache
@@ -10,7 +9,7 @@ services:
     ports:
       # Exposé uniquement en localhost pour le reverse proxy Nginx système
       - "127.0.0.1:8080:80"
-    # Configuration épurée: aucune surcouche DNS, on utilise l'endpoint v3 directement.
+  # Configuration épurée: aucune surcouche DNS
     environment:
       - APP_ENV=${APP_ENV:-dev}
       - APP_SECRET=${APP_SECRET}
