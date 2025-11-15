@@ -25,7 +25,8 @@ parameters:
     app_token_endpoint: '%env(string:TOKEN_ENDPOINT)%'
     app_data_endpoint: '%env(string:DATA_ENDPOINT)%'
     app_disable_data_enpoint_auth: '%env(defined:DISABLE_DATA_ENPOINT_AUTH)%'
-    app_pkce: '%env(defined:PKCE)%'
+    # PKCE doit être un booléen: "0" -> false, "1" -> true
+    app_pkce: '%env(bool:PKCE)%'
     app_flow: '%env(string:FLOW)%'
     app_client_id: '%env(string:CLIENT_ID)%'
     app_client_secret: '%env(string:CLIENT_SECRET)%'
