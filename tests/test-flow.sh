@@ -84,7 +84,7 @@ echo "=== Étape 3: Appel Data (consommation journalière) ==="
 START_DATE="2025-11-01"
 END_DATE="2025-11-15"
 
-curl -sS "${BASE_URL}/data/proxy/metering_data_v5/daily_consumption?usage_point_id=${USAGE_POINT_ID}&start=${START_DATE}&end=${END_DATE}" \
+curl -sS "${BASE_URL}/data/proxy/metering_data_dc/v5/daily_consumption?usage_point_id=${USAGE_POINT_ID}&start=${START_DATE}&end=${END_DATE}" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" > data.json
 
 cat data.json | jq .

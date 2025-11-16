@@ -3,27 +3,31 @@ OAuth 2.0 Device Flow Proxy Server for Enedis
 
 An OAuth 2.0 Device Code Flow proxy for [Homey](https://homey.app/fr-fr/app/com.clement-fevre.enedis.connect/Mon-Suivi-Conso-Enedis/) plugin, adapted to the [Enedis Data Hub](https://datahub-enedis.fr).
 
-Un proxy OAuth 2.0 « Device Code Flow » pour Homey, adapté au Data Hub Enedis.
+Un proxy OAuth 2.0 « Device Code Flow » pour Homey, adapte au Data Hub Enedis.
 
-This project if a fork of https://github.com/aaronpk/Device-Flow-Proxy-Server, a big thanks to him.
+This project is a fork of https://github.com/aaronpk/Device-Flow-Proxy-Server, a big thanks to him.
 
 This service acts as an OAuth server that implements the device code flow, proxying to a real OAuth server behind the scenes.
 
-Compared to the original project, this implementation uses PostgreSQL instead of Redis, it sends back all parameters received during redirect (mainly to get usage_point_id from Enedis), it adds a feature to provide client_secret from .env file instead of getting it from device request, to keep it private, and it can act as a proxy to add this client_secret from `.env` file to Enedis when refreshing tokens, if you don't want the device to provide it.
+Compared to the original project, this implementation uses PostgreSQL instead of Redis, it sends back all parameters received during redirect (mainly to get usage_point_id from Enedis), it adds a feature to provide client_secret from .env file instead of getting it from device request, to keep it private, and it implements Enedis CONSENT flow with client_credentials for data API access.
 
 Installation
 ------------
 
-```
+```bash
 cp .env.example .env
 composer install
 ```
 
-In the `.env` file, fill out the required variables and don't forget to change APP_SECRET to another random string.
+In the `.env` file, fill out the required variables:
+- Change `APP_SECRET` to a random string
+- Set `CLIENT_ID` and `CLIENT_SECRET` from your Enedis Data Hub account
+- Configure endpoints (already set for Enedis API v3):
+  - `TOKEN_ENDPOINT=https://gw.ext.prod.api.enedis.fr/oauth2/v3/token`
+  - `DATA_ENDPOINT=https://gw.ext.prod.api.enedis.fr`
+- Set `FLOW=CONSENT` to enable Enedis CONSENT flow with client_credentials
 
-You will need to install PostgreSQL if it is not already on your system, or point to an existing PostgreSQL server in the config file.
-
-Define your OAuth server's authorization endpoint and token endpoint URL, and optionaly the client_secret, this way it will be kept private between your web server and Enedis, otherwise the device must provide it during requests.
+You will need PostgreSQL (Docker Compose setup included) or point to an existing PostgreSQL server in the config file.
 
 
 Usage
@@ -121,14 +125,52 @@ You'll get a response with new access and refresh tokens.
 
 If the servers are not using the client_credentials flow (if `FLOW` is set to `DEVICE` in `.env` file), you can now send your data request to final server with the obtained access_token.
 
-If the servers are using the client_credentials flow (if `FLOW` is unset in `.env` file), you can now send your data request to this address (replace path1/path2 with the path you want your request to go to, the server address is configured with DATA_ENDPOINT variable in .env file):
+If the servers are using the client_credentials flow (if `FLOW` is set to `CONSENT` in `.env` file), you can now send your data request through the proxy. The proxy will automatically obtain and refresh client_credentials tokens from Enedis.
 
-```
+Example for daily consumption data (Enedis API v5):
+
+```bash
 curl --header "Authorization: Bearer 6czyedyLUHvyjtWZuWwBLkXNZhzk9QLP9Cip5NPhFNmc8znWoPipnW" \
-    "http://localhost:8080/data/proxy/path1/path2?usage_point_id=1234567890abcd&param1=value&param2=value"
+    "http://localhost:8080/data/proxy/metering_data_dc/v5/daily_consumption?usage_point_id=19182633854086&start=2025-11-01&end=2025-11-15"
+```
+
+Available Enedis Data API v5 endpoints:
+- `/metering_data_dc/v5/daily_consumption` - Consommation journaliere
+- `/metering_data_dcmp/v5/daily_consumption_max_power` - Puissance maximale journaliere
+- `/metering_data_clc/v5/consumption_load_curve` - Courbe de charge consommation
+- `/metering_data_dp/v5/daily_production` - Production journaliere
+- `/metering_data_plc/v5/production_load_curve` - Courbe de charge production
+
+Enedis CONSENT Flow Architecture
+---------------------------------
+
+This proxy implements Enedis specific CONSENT flow:
+
+1. User authenticates via Enedis OAuth and grants consent
+2. Enedis redirects with `usage_point_id` (no authorization_code)
+3. Proxy generates internal `access_token` and `refresh_token` for the device
+4. Device uses these tokens to authenticate API requests to the proxy
+5. Proxy automatically obtains `client_credentials` token from Enedis (valid 3h30, shared across all consented users)
+6. Proxy forwards data requests to Enedis API with the `client_credentials` token
+
+Cache Management
+----------------
+
+The proxy uses PostgreSQL to cache:
+- Device codes and user codes (300s expiry)
+- User consent state (300s expiry)
+- Internal access/refresh tokens (no expiry until refresh)
+- Client credentials tokens (12600s / 3h30 expiry)
+
+To clear the cache:
+
+```bash
+docker compose exec -T db psql -U $DB_USER -d $DB_NAME -c "TRUNCATE TABLE cache;"
 ```
 
 Notes
 -----
 
-- Avertissement Apache AH00558: Le message "Could not reliably determine the server's fully qualified domain name" est supprimé automatiquement via un ServerName global (ServerName localhost) ajouté durant le build de l'image Docker.
+- Apache AH00558 warning suppressed via ServerName directive in Docker image
+- Compatible with Enedis API v3 (migration from v1 completed November 2024)
+- Client credentials mechanism implemented per Enedis specifications
