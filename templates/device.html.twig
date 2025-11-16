@@ -27,13 +27,13 @@
     id="user_code"
     value="{{ code }}"
     autocomplete="off"
-    style="font-size: 20px; padding: 15px; width: 450px; letter-spacing: 2px; font-family: monospace; text-transform: uppercase; text-align: center;"
+    style="font-size: clamp(16px, 5vw, 20px); padding: clamp(10px, 3vw, 15px); width: 100%; max-width: 450px; box-sizing: border-box; letter-spacing: clamp(0.5px, 0.8vw, 2px); font-family: monospace; text-transform: uppercase; text-align: center;"
     {% if code %}readonly{% endif %}
   >
   <input type="hidden" name="state" value="{{ state }}">
   <p>
-    <button type="submit" style="border: 0; padding: 0; width: 282px; height: 79px;" name="btnSubmit" title="Acc<C3><A9>der <C3><A0> mon espace Enedis">
-      <img src="https://datahub-enedis.fr/wp-content/uploads/2018/11/blanc-txtbleu.png"/>
+    <button type="submit" style="border: 0; padding: 0; width: 100%; max-width: 282px; height: auto;" name="btnSubmit" title="Accéder à mon espace Enedis">
+      <img src="https://datahub-enedis.fr/wp-content/uploads/2018/11/blanc-txtbleu.png" style="max-width: 100%; height: auto; display: block;"/>
     </button>
   </p>
 </div>
