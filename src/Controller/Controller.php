@@ -655,12 +655,15 @@ class Controller extends AbstractController {
     }
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
     $token_response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $access_token = json_decode($token_response);
 
     if(!$access_token || !property_exists($access_token, 'access_token') || !property_exists($access_token, 'expires_in')) {
-      # If there are any problems getting an access token, kill the request and display an error
+      # Log l'erreur pour debug
+      error_log('[CLIENT_CREDENTIALS] Failed to get token - HTTP '.$http_code.' - Response: '.$token_response);
       return null;
     }
+    error_log('[CLIENT_CREDENTIALS] Token obtained successfully - expires_in: '.$access_token->expires_in);
     $expires_in = intval($access_token->expires_in);
     if ($expires_in > 180) {
       $cache = $this->connectCache();
@@ -743,13 +746,26 @@ class Controller extends AbstractController {
     $cache->expire($bucket, 60);
     #####################
 
-    # Use the user's Bearer token directly (no client_credentials in CONSENT flow)
-    $user_token = [
-      'token_type' => 'Bearer',
-      'access_token' => $auth
-    ];
+    # En mode CONSENT: utiliser client_credentials pour appeler l'API Data Enedis
+    # Le token user sert uniquement à valider l'accès au usage_point_id
+    $cg = $cache->get('client_credentials');
+    if (!$cg) {
+      $cg = self::refresh_client_credentials();
+      if (!$cg) {
+        return $this->error('Unauthorized', 'Cannot get client credentials', Response::HTTP_UNAUTHORIZED);
+      }
+    }
     
-    list($errno, $html_code, $data) = self::get_data($path, $user_token, $request->query);
+    list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
+    
+    # Si 403, retry avec refresh des credentials
+    if ($html_code == Response::HTTP_FORBIDDEN) {
+      $cg = self::refresh_client_credentials();
+      if (!$cg) {
+        return $this->error('Unauthorized', 'Cannot refresh client credentials', Response::HTTP_UNAUTHORIZED);
+      }
+      list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
+    }
 
     if ($errno != 0) {
       return $this->error('invalid_request', 'cURL error ' . strval($errno));
