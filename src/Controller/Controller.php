@@ -91,10 +91,23 @@ class Controller extends AbstractController {
     }
 
     # client_id is required
-    $client_id = $request->request->get('client_id');
-    if($client_id == null) {
+    $external_client_id = $request->request->get('client_id');
+    if($external_client_id == null) {
       return $this->error('invalid_request', 'Missing client_id');
     }
+
+    # Validate external client_id against configured EXTERNAL_CLIENT_ID
+    $expected_external_client_id = $this->getParameter('app_external_client_id');
+    if($external_client_id !== $expected_external_client_id) {
+      error_log('[AUTH] Invalid external client_id provided: ' . substr($external_client_id, 0, 10) . '...');
+      return $this->error('invalid_client', 'Invalid client_id');
+    }
+
+    # Map external client_id to real Enedis client_id
+    $enedis_client_id = $this->getParameter('app_client_id');
+    $enedis_client_secret = $this->getParameter('app_client_secret');
+
+    error_log('[AUTH] Valid external client_id, mapping to Enedis credentials');
 
     # We've validated everything we can at this stage.
     # Generate a verification code and cache it along with the other values in the request.
@@ -102,8 +115,9 @@ class Controller extends AbstractController {
     # Generate a PKCE code_verifier and store it in the cache too
     $pkce_verifier = bin2hex(random_bytes(32));
     $cache_content = [
-      'client_id' => $client_id,
-      'client_secret' => $request->request->get('client_secret'),
+      'client_id' => $enedis_client_id,  # Store Enedis client_id for later use
+      'client_secret' => $enedis_client_secret,  # Store Enedis client_secret
+      'external_client_id' => $external_client_id,  # Keep track of external client_id
       'scope' => $request->request->get('scope'),
       'device_code' => $device_code,
       'pkce_verifier' => $pkce_verifier,
@@ -507,14 +521,17 @@ class Controller extends AbstractController {
       return $this->error(self::MSG_VER_ERROR, self::MSG_VER_ERROR_LONG);
     }
 
-    $client_id = $request->request->get('client_id');
+    $external_client_id = $request->request->get('client_id');
     $grant_type = $request->request->get('grant_type');
-    if(($client_id == null) || ($grant_type == null)) {
+    if(($external_client_id == null) || ($grant_type == null)) {
       return $this->error('invalid_request', 'Missing client_id or grant_type');
     }
 
-    if($client_id != $this->getParameter('app_client_id')) {
-      return $this->error('invalid_request', 'Bad client_id');
+    # Validate external client_id
+    $expected_external_client_id = $this->getParameter('app_external_client_id');
+    if($external_client_id !== $expected_external_client_id) {
+      error_log('[TOKEN] Invalid external client_id provided: ' . substr($external_client_id, 0, 10) . '...');
+      return $this->error('invalid_client', 'Bad client_id');
     }
     
     $cache = $this->connectCache();

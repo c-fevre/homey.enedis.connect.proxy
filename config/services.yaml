@@ -28,6 +28,7 @@ parameters:
     # PKCE doit être un booléen: "0" -> false, "1" -> true
     app_pkce: '%env(bool:PKCE)%'
     app_flow: '%env(string:FLOW)%'
+    app_external_client_id: '%env(string:EXTERNAL_CLIENT_ID)%'
     app_client_id: '%env(string:CLIENT_ID)%'
     app_client_secret: '%env(string:CLIENT_SECRET)%'
     app_duration: '%env(string:DURATION)%'

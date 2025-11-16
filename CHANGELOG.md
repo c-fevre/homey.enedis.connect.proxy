@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2025-11-16
+
+### Added
+- Two-tier client_id security system:
+  - `EXTERNAL_CLIENT_ID`: Public key for external apps (Homey, mobile apps)
+  - `CLIENT_ID`: Private Enedis Data Hub credentials (server-side only)
+- Automatic mapping between external and Enedis credentials
+- Client_id validation in `/device/code` and `/device/token` endpoints
+
+### Changed
+- External apps now use `EXTERNAL_CLIENT_ID` instead of direct Enedis `CLIENT_ID`
+- Updated test-flow.sh to use `EXTERNAL_CLIENT_ID`
+- Enhanced README with security architecture documentation
+
+### Security
+- Enedis credentials (`CLIENT_ID`/`CLIENT_SECRET`) never exposed to clients
+- Invalid client_id attempts logged for security monitoring
+- Prevents credential leakage in client applications
+
 ## [1.0.0] - 2025-11-16
 
 ### Added

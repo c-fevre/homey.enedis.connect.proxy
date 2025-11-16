@@ -21,11 +21,21 @@ composer install
 
 In the `.env` file, fill out the required variables:
 - Change `APP_SECRET` to a random string
-- Set `CLIENT_ID` and `CLIENT_SECRET` from your Enedis Data Hub account
+- Generate `EXTERNAL_CLIENT_ID` for external apps (Homey):
+  ```bash
+  openssl rand -hex 20 | sed 's/^/hmey_prod_/'
+  ```
+- Set `CLIENT_ID` and `CLIENT_SECRET` from your Enedis Data Hub account (keep private)
 - Configure endpoints (already set for Enedis API v3):
   - `TOKEN_ENDPOINT=https://gw.ext.prod.api.enedis.fr/oauth2/v3/token`
   - `DATA_ENDPOINT=https://gw.ext.prod.api.enedis.fr`
 - Set `FLOW=CONSENT` to enable Enedis CONSENT flow with client_credentials
+
+**Security Note**: The proxy uses two different client IDs:
+- `EXTERNAL_CLIENT_ID`: Public key used by external apps (Homey, mobile apps, etc.)
+- `CLIENT_ID`: Private Enedis Data Hub credentials (never exposed to clients)
+
+The proxy automatically maps external requests to Enedis credentials, keeping your Enedis `CLIENT_ID` and `CLIENT_SECRET` secure.
 
 You will need PostgreSQL (Docker Compose setup included) or point to an existing PostgreSQL server in the config file.
 
@@ -39,13 +49,15 @@ The device will need to register an application at the OAuth server to get a cli
 http://localhost:8080/auth/redirect
 ```
 
-The device can begin the flow by making a POST request to this proxy:
+The device can begin the flow by making a POST request to this proxy using the `EXTERNAL_CLIENT_ID`:
 
-```
-curl http://localhost:8080/device/code -d client_id=1234567890
+```bash
+curl http://localhost:8080/device/code -d client_id=FILLME
 ```
 
-or if your device must provide client_secret (otherwise you can specify it in the `.env` file)
+Note: The `client_secret` is automatically managed by the proxy (stored in `.env`), devices never need to provide it.
+
+Legacy syntax (if your device must provide client_secret):
 
 ```
 curl http://localhost:8080/device/code -d client_id=1234567890 -d client_secret=12345678-1234-1234-1234-1234567890ab

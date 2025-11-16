@@ -11,20 +11,20 @@ echo ""
 BASE_URL="https://homey-enedis-proxy.clement-fevre.com"
 # Alternative locale: BASE_URL="http://127.0.0.1:8080"
 
-CLIENT_ID="$(grep -E '^CLIENT_ID=' .env | sed 's/^CLIENT_ID=//' | tr -d '"')"
+EXTERNAL_CLIENT_ID="$(grep -E '^EXTERNAL_CLIENT_ID=' .env | sed 's/^EXTERNAL_CLIENT_ID=//' | tr -d '"')"
 
-if [ -z "$CLIENT_ID" ]; then
-  echo "Erreur: CLIENT_ID introuvable dans .env"
+if [ -z "$EXTERNAL_CLIENT_ID" ]; then
+  echo "Erreur: EXTERNAL_CLIENT_ID introuvable dans .env"
   exit 1
 fi
 
 echo "BASE_URL: $BASE_URL"
-echo "CLIENT_ID: ${CLIENT_ID:0:10}..."
+echo "EXTERNAL_CLIENT_ID: ${EXTERNAL_CLIENT_ID:0:15}..."
 echo ""
 
 # 2) Générer device_code
 echo "=== Étape 1: Génération du device_code ==="
-curl -sS "${BASE_URL}/device/code" -d client_id="${CLIENT_ID}" > gen.json
+curl -sS "${BASE_URL}/device/code" -d client_id="${EXTERNAL_CLIENT_ID}" > gen.json
 cat gen.json | jq .
 echo ""
 
@@ -48,7 +48,7 @@ for i in {1..30}; do
   echo "Tentative $i/30..."
   curl -sS "${BASE_URL}/device/token" \
     -d grant_type='urn:ietf:params:oauth:grant-type:device_code' \
-    -d client_id="${CLIENT_ID}" \
+    -d client_id="${EXTERNAL_CLIENT_ID}" \
     -d device_code="${DEVICE_CODE}" > token.json
 
   if jq -e '.access_token' token.json >/dev/null 2>&1; then
