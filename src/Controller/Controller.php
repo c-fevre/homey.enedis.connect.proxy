@@ -743,21 +743,13 @@ class Controller extends AbstractController {
     $cache->expire($bucket, 60);
     #####################
 
-    $cg = $cache->get('client_credentials');
-    if (!$cg) {
-      $cg = self::refresh_client_credentials();
-      if (!$cg) {
-        return $this->error('Unauthorized', 'Cannot get client credentials', Response::HTTP_NOT_FOUND);
-      }
-    }
-    list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
-    if ($html_code == Response::HTTP_FORBIDDEN) {
-      $cg = self::refresh_client_credentials();
-      if (!$cg) {
-        return $this->error('Unauthorized', 'Cannot get client credentials', Response::HTTP_NOT_FOUND);
-      }
-      list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
-    }
+    # Use the user's Bearer token directly (no client_credentials in CONSENT flow)
+    $user_token = [
+      'token_type' => 'Bearer',
+      'access_token' => $auth
+    ];
+    
+    list($errno, $html_code, $data) = self::get_data($path, $user_token, $request->query);
 
     if ($errno != 0) {
       return $this->error('invalid_request', 'cURL error ' . strval($errno));
