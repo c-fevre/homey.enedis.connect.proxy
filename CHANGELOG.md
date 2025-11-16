@@ -58,3 +58,13 @@ All notable changes to this project will be documented in this file.
 - Client credentials token cached securely with TTL
 - HTTPS required for production deployment
 - Rate limiting support via LIMIT_REQUESTS_PER_MINUTE
+
+## [1.2.0] - 2025-11-17
+
+### Changed
+- Device page UI: responsive input/button on mobile (full width, font sizing with CSS clamp) to avoid overflow.
+- Health endpoint `/health`: used by client for readiness checks.
+
+### Security
+- Logs hardening: redact sensitive values (`user_code`, `state`, tokens) in logs to avoid leaking secrets.
+- Minimal per-IP rate limit on critical endpoints (`/device/code`, `/device/token`) with 429 when exceeded.

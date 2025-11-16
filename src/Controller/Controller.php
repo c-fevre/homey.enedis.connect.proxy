@@ -42,6 +42,29 @@ class Controller extends AbstractController {
     return $response;
   }
 
+  private function redact(string $value, int $start = 4, int $end = 2): string {
+    $len = strlen($value);
+    if ($len <= ($start + $end)) return str_repeat('•', max(0, $len));
+    return substr($value, 0, $start) . str_repeat('•', $len - $start - $end) . substr($value, -$end);
+  }
+
+  private function rateLimit(Request $request, string $bucket = 'default', ?int $limit = null): ?Response {
+    try {
+      $ip = $request->getClientIp() ?: 'unknown';
+      $max = $limit ?? intval($this->getParameter('app_limit_requests_per_minute') ?? 60);
+      $key = 'ratelimit:'.$bucket.':'.$ip;
+      $cache = $this->connectCache();
+      $count = intval($cache->get($key) ?? 0);
+      if ($count >= $max) {
+        return $this->error('too_many_requests', 'Rate limit exceeded', Response::HTTP_TOO_MANY_REQUESTS);
+      }
+      $cache->set($key, $count + 1, 60);
+    } catch (\Throwable $e) {
+      // ne pas bloquer en cas d'erreur de cache
+    }
+    return null;
+  }
+
   # Home Page
   #[Route('/', name: 'index', methods: ['GET'])]
   public function index(): Response {
@@ -82,6 +105,7 @@ class Controller extends AbstractController {
   # A device submits a request here (POST) to generate a new device and user code
   #[Route('/device/code', name: 'generate_code', methods: ['POST'])]
   public function generate_code(Request $request): Response {
+    if ($rl = $this->rateLimit($request, 'device_code')) return $rl;
     # Params:
     # client_id
     # scope
@@ -245,7 +269,7 @@ class Controller extends AbstractController {
     $received_code = $request->query->get('code');
     $received_state = $request->query->get('state');
     $received_usage_point = $request->query->get('usage_point_id');
-    error_log('[AUTH] Redirect callback received - code: '.substr($received_code, 0, 20).'..., state: '.substr($received_state, 0, 20).'..., usage_point_id: '.$received_usage_point);
+  error_log('[AUTH] Redirect callback received - code: '.substr($received_code ?? '', 0, 6).'•••, state: '.substr($received_state ?? '', 0, 6).'•••, usage_point_id: '.($received_usage_point ? 'present' : 'absent'));
 
     # Check if error
     $error = $request->query->get('error');
@@ -279,7 +303,7 @@ class Controller extends AbstractController {
       return $this->html_error('Invalid State', 'Format de state invalide');
     }
 
-    error_log('[AUTH] State content: '.json_encode($state));
+  error_log('[AUTH] State content keys: '.json_encode(array_keys($state)));
     $user_code = $state['user_code'] ?? null;
     $device_code = $state['device_code'] ?? null;
 
@@ -289,11 +313,11 @@ class Controller extends AbstractController {
     }
 
     # Look up the info from the user code provided in the state parameter
-    $cache_content = $cache->get($user_code);
-    error_log('[AUTH] Cache content lookup for user_code "'.$user_code.'" - found: '.(is_null($cache_content) ? 'NULL' : (is_array($cache_content) ? 'array['.count($cache_content).']' : 'object')));
+  $cache_content = $cache->get($user_code);
+  error_log('[AUTH] Cache content lookup for user_code "'.$this->redact($user_code).'" - found: '.(is_null($cache_content) ? 'NULL' : (is_array($cache_content) ? 'array['.count($cache_content).']' : 'object')));
     
     if($cache_content == false) {
-      error_log('[AUTH] cache_content not found or expired for user_code: '.$user_code);
+  error_log('[AUTH] cache_content not found or expired for user_code: '.$this->redact($user_code));
       return $this->html_error('Invalid Request', 'user_code introuvable (expiré ou invalide)');
     }
     
@@ -398,7 +422,8 @@ class Controller extends AbstractController {
       if ($curl_error) {
         error_log('[AUTH] cURL error: '.$curl_error);
       }
-      error_log('[AUTH] Token response body: '.substr($token_response, 0, 500));
+  $bodyLen = is_string($token_response) ? strlen($token_response) : 0;
+  error_log('[AUTH] Token response body received (length='.$bodyLen.')');
 
       if ($curl_error) {
         $cache->delete($user_code);
@@ -517,6 +542,7 @@ class Controller extends AbstractController {
   # the server should return: authorization_pending and slow_down
   #[Route('/device/token', name: 'access_token', methods: ['POST'])]
   public function access_token(Request $request): Response {
+    if ($rl = $this->rateLimit($request, 'device_token')) return $rl;
     if (!$this->checkVersion($request)) {
       return $this->error(self::MSG_VER_ERROR, self::MSG_VER_ERROR_LONG);
     }
