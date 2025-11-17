@@ -408,10 +408,10 @@ class Controller extends AbstractController {
       curl_setopt($ch, CURLOPT_POST, true);
       curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      // CURLOPT_VERBOSE désactivé pour éviter le spam de logs SSL
-      // if ($this->getParameter('kernel.debug')) {        
-      //   curl_setopt($ch, CURLOPT_VERBOSE, true);
-      // }
+      // Pas de verbose par défaut (bruyant). Utiliser APP_HTTP_DEBUG=1 pour activer si besoin.
+      if ($this->getParameter('app_http_debug')) {
+        curl_setopt($ch, CURLOPT_VERBOSE, true);
+      }
       $token_response = curl_exec($ch);
       $curl_error = curl_error($ch);
       $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -519,7 +519,8 @@ class Controller extends AbstractController {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    if ($this->getParameter('kernel.debug')) {        
+    // Pas de verbose en prod; activable via APP_HTTP_DEBUG=1 uniquement
+    if ($this->getParameter('app_http_debug')) {        
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     // this function is called by curl for each header received
@@ -693,7 +694,7 @@ class Controller extends AbstractController {
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    if ($this->getParameter('kernel.debug')) {        
+    if ($this->getParameter('app_http_debug')) {        
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
@@ -702,8 +703,9 @@ class Controller extends AbstractController {
     $access_token = json_decode($token_response);
 
     if(!$access_token || !property_exists($access_token, 'access_token') || !property_exists($access_token, 'expires_in')) {
-      # Log l'erreur pour debug
-      error_log('[CLIENT_CREDENTIALS] Failed to get token - HTTP '.$http_code.' - Response: '.$token_response);
+      # Log l'erreur pour debug (sans afficher le corps complet)
+      $bodyLen = is_string($token_response) ? strlen($token_response) : 0;
+      error_log('[CLIENT_CREDENTIALS] Failed to get token - HTTP '.$http_code.' - Body length: '.$bodyLen);
       return null;
     }
     error_log('[CLIENT_CREDENTIALS] Token obtained successfully - expires_in: '.$access_token->expires_in);
@@ -729,7 +731,7 @@ class Controller extends AbstractController {
     curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_data_endpoint') . '/' . $path. '?' . $query2);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    if ($this->getParameter('kernel.debug')) {        
+    if ($this->getParameter('app_http_debug')) {        
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     curl_setopt($ch, CURLOPT_HEADERFUNCTION, '\App\Controller\Controller::setHeader');
@@ -799,7 +801,7 @@ class Controller extends AbstractController {
       }
     }
     
-    list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
+  list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
     
     # Si 403, retry avec refresh des credentials
     if ($html_code == Response::HTTP_FORBIDDEN) {
@@ -807,6 +809,13 @@ class Controller extends AbstractController {
       if (!$cg) {
         return $this->error('Unauthorized', 'Cannot refresh client credentials', Response::HTTP_UNAUTHORIZED);
       }
+      list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
+    }
+
+    // Retry soft on HTTP 5xx (transient provider errors)
+    if ($errno == 0 && $html_code >= 500 && $html_code < 600) {
+      // petite pause puis un seul retry
+      usleep(200000); // 200ms
       list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
     }
 

@@ -19,7 +19,34 @@
 {% endif %}
 
 <form action="{{ url('verify_code') }}" method="get">
-<div style="text-align: center">
+<div style="text-align: center; padding: 0 12px; box-sizing: border-box;">
+  <style>
+    /* Ajustements responsive pour l'input du code sur mobile */
+    .code-input {
+      font-family: monospace;
+      text-transform: uppercase;
+      text-align: center;
+      width: 100%;
+      max-width: 450px;
+      box-sizing: border-box;
+      /* Police plus compacte, adaptée aux petits écrans */
+      font-size: clamp(13px, 3.8vw, 18px);
+      padding: clamp(10px, 2.8vw, 14px);
+      letter-spacing: clamp(0.25px, 0.6vw, 1px);
+      /* Evite les dépassements horizontaux du texte long */
+      white-space: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 360px) {
+      .code-input {
+        font-size: 12.5px;
+        letter-spacing: 0.5px;
+        padding: 9px;
+      }
+    }
+  </style>
   <input
     type="text"
     name="code"
@@ -27,7 +54,7 @@
     id="user_code"
     value="{{ code }}"
     autocomplete="off"
-    style="font-size: clamp(16px, 5vw, 20px); padding: clamp(10px, 3vw, 15px); width: 100%; max-width: 450px; box-sizing: border-box; letter-spacing: clamp(0.5px, 0.8vw, 2px); font-family: monospace; text-transform: uppercase; text-align: center;"
+    class="code-input"
     {% if code %}readonly{% endif %}
   >
   <input type="hidden" name="state" value="{{ state }}">

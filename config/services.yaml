@@ -37,6 +37,9 @@ parameters:
     app_db_user: '%env(string:DB_USER)%'
     app_db_password: '%env(string:DB_PASSWORD)%'
     app_db_name: '%env(string:DB_NAME)%'
+    # Debug HTTP bas niveau (cURL verbose). Désactivé par défaut pour éviter le bruit dans les logs
+    env(APP_HTTP_DEBUG): ''
+    app_http_debug: '%env(bool:APP_HTTP_DEBUG)%'
 
 #    router.request_context.scheme: 'https'
 #    asset.request_context.secure: true
