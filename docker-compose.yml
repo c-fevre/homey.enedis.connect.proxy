@@ -45,7 +45,7 @@ services:
       # Persistance des données
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-enedis_user}"]
+      test: ["CMD-SHELL", "pg_isready -U enedis_proxy_admin -d enedis_oauth_proxy_db"]
       interval: 10s
       timeout: 5s
       retries: 5
