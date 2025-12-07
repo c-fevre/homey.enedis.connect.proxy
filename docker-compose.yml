@@ -37,9 +37,10 @@ services:
       POSTGRES_DB: ${DB_NAME:-enedis_proxy}
       POSTGRES_USER: ${DB_USER:-enedis_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-enedis_password}
-    # Port PostgreSQL NON exposé publiquement (accès interne uniquement)
-    # ports:
-    #   - "5432:5432"
+    # Port PostgreSQL exposé pour accès externe (DataGrip, etc.)
+    # Port 5434 utilisé car 5432 et 5433 sont déjà pris par d'autres services
+    ports:
+      - "5434:5432"
     volumes:
       # Persistance des données
       - postgres_data:/var/lib/postgresql/data
