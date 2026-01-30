@@ -771,7 +771,8 @@ class Controller extends AbstractController {
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     curl_setopt($ch, CURLOPT_HEADERFUNCTION, '\App\Controller\Controller::setHeader');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: ' . $token_type . ' '. $access_token, 'Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
+    // Note: Content-Type removed - Enedis API rejects it on GET requests (returns 500)
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: ' . $token_type . ' '. $access_token, 'Accept: application/json'));
     $data = curl_exec($ch);
     $html_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
