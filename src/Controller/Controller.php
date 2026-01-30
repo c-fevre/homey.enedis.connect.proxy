@@ -717,6 +717,38 @@ class Controller extends AbstractController {
     return $access_token;
   }
 
+  # DEBUG endpoint - TEMPORAIRE
+  #[Route('/debug/test-enedis', name: 'debug_test_enedis', methods: ['GET'])]
+  public function debug_test_enedis(): Response {
+    $cache = $this->connectCache();
+    $cg = $cache->get('client_credentials');
+    
+    $debug = [
+      'cg_type' => gettype($cg),
+      'cg_is_array' => is_array($cg),
+      'token_type' => is_array($cg) ? ($cg['token_type'] ?? 'NULL') : ($cg->token_type ?? 'NULL'),
+      'access_token_length' => strlen(is_array($cg) ? ($cg['access_token'] ?? '') : ($cg->access_token ?? '')),
+      'access_token_first_50' => substr(is_array($cg) ? ($cg['access_token'] ?? '') : ($cg->access_token ?? ''), 0, 50),
+    ];
+
+    // Test appel direct Enedis
+    $token = is_array($cg) ? ($cg['access_token'] ?? null) : ($cg->access_token ?? null);
+    $url = $this->getParameter('app_data_endpoint') . '/customers_upc/v5/usage_points/contracts?usage_point_id=14231837798040';
+    
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $token, 'Accept: application/json']);
+    $data = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+    $debug['test_url'] = $url;
+    $debug['test_http_code'] = $http_code;
+    $debug['test_response'] = $data;
+
+    return new Response(json_encode($debug, JSON_PRETTY_PRINT), 200, ['Content-Type' => 'application/json']);
+  }
+
   # get json data with cURL
   private function get_data($path, $cg, $query){
     $query2 = http_build_query(array_filter($query->all()));
@@ -727,8 +759,12 @@ class Controller extends AbstractController {
     $token_type = is_array($cg) ? ($cg['token_type'] ?? 'Bearer') : ($cg->token_type ?? 'Bearer');
     $access_token = is_array($cg) ? ($cg['access_token'] ?? null) : ($cg->access_token ?? null);
 
+    $fullUrl = $this->getParameter('app_data_endpoint') . '/' . $path. '?' . $query2;
+    error_log('[DATA_PROXY] Calling: ' . $fullUrl);
+    error_log('[DATA_PROXY] Token (first 20 chars): ' . substr($access_token, 0, 20) . '...');
+
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_data_endpoint') . '/' . $path. '?' . $query2);
+    curl_setopt($ch, CURLOPT_URL, $fullUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     if ($this->getParameter('app_http_debug')) {        
@@ -739,6 +775,10 @@ class Controller extends AbstractController {
     $data = curl_exec($ch);
     $html_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
+    
+    // Log response for debugging
+    error_log('[DATA_PROXY] Response HTTP ' . $html_code . ' - Body: ' . $data);
+    
     return array($errno, $html_code, $data);
   }
 
