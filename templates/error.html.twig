@@ -7,4 +7,11 @@
 <h2>{{ error }}</h2>
 
 <p>{{ error_description }}</p>
+
+<script>
+// Sortir de l'iframe Enedis, sinon l'erreur reste invisible pour l'utilisateur.
+if (window.top !== window.self) {
+  window.top.location.href = window.location.href;
+}
+</script>
 {% endblock %}

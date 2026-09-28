@@ -10,11 +10,19 @@ use Symfony\Component\Routing\Attribute\Route;
 use App\Util\Helpers;
 use App\Util\Cache;
 use App\Util\CachePG;
+use App\Util\EnedisTranslator;
 
 class Controller extends AbstractController {
   const MSG_VER_ERROR = 'version_mismatch';
   const MSG_VER_ERROR_LONG = 'Votre version du plugin est trop ancienne, veuillez la mettre à jour';
   const ACCESS_EXPIRE = 12600;
+  # Délais réseau des appels vers Enedis (secondes)
+  const HTTP_CONNECT_TIMEOUT = 10;
+  const HTTP_TIMEOUT = 30;
+  # Durée pendant laquelle on évite de rappeler une nouvelle API refusée (401/403) pour un PRM
+  const NEW_API_SKIP_TTL = 600;
+  # Délai minimal entre deux renouvellements du jeton client_credentials sur un 403
+  const CREDENTIALS_REFRESH_MIN_INTERVAL = 60;
 
   #TODO varier erreur 400 (403 pour token invalide ? Cf. plugin.py)
   private function error($error, $error_description=false, $errno = Response::HTTP_BAD_REQUEST) {
@@ -74,7 +82,22 @@ class Controller extends AbstractController {
   # Simple healthcheck endpoint
   #[Route('/health', name: 'health', methods: ['GET'])]
   public function health(): Response {
-    return new JsonResponse(['status' => 'ok']);
+    # 'status' doit rester la première clé : le healthcheck Docker cherche "status":"ok"
+    $authorize = (string)$this->getParameter('app_authorization_endpoint');
+    return new JsonResponse([
+      'status' => 'ok',
+      'authorize' => preg_match('#/dataconnect/(v\d+)/#', $authorize, $m) ? $m[1] : 'custom',
+      'api_mode' => $this->apiMode(),
+    ]);
+  }
+
+  # Mode d'accès aux API de données Enedis :
+  #  - auto   : nouvelles API d'abord, repli sur les anciennes API v5 en cas d'échec
+  #  - new    : nouvelles API uniquement (à utiliser une fois les API v5 arrêtées)
+  #  - legacy : anciennes API v5 uniquement (comportement d'avant la bascule)
+  private function apiMode(): string {
+    $mode = strtolower(trim((string)$this->getParameter('app_enedis_api_mode')));
+    return in_array($mode, ['auto', 'new', 'legacy'], true) ? $mode : 'auto';
   }
 
   # Check version of env file if defined against user agent header
@@ -263,13 +286,22 @@ class Controller extends AbstractController {
   # After the user logs in and authorizes the app on the real auth server, they will
   # be redirected back to here (GET). We'll need to exchange the auth code for an access token,
   # and then show a message that instructs the user to go back to their TV and wait.
+  # Note: le portail Enedis (composant partage-donnees v1) fait
+  # `window.location.href = redirectUri + "_parent"` au lieu d'utiliser "_parent" comme
+  # target de fenêtre. On accepte donc aussi /auth/redirect_parent pour ne pas perdre
+  # le consentement à cause de ce bug côté Enedis.
   #[Route('/auth/redirect', name: 'myredirect', methods: ['GET'])]
+  #[Route('/auth/redirect_parent', name: 'myredirect_parent', methods: ['GET'])]
   public function myredirect(Request $request): Response {
     # Log de démarrage avec tous les paramètres reçus
     $received_code = $request->query->get('code');
     $received_state = $request->query->get('state');
     $received_usage_point = $request->query->get('usage_point_id');
-  error_log('[AUTH] Redirect callback received - code: '.substr($received_code ?? '', 0, 6).'•••, state: '.substr($received_state ?? '', 0, 6).'•••, usage_point_id: '.($received_usage_point ? 'present' : 'absent'));
+    # Depuis la bascule du 28/09/2026, Enedis ne renvoie plus le PRM mais un autorisation_id
+    $received_autorisation = $request->query->get('autorisation_id')
+      ?? $request->query->get('autorisationId')
+      ?? $request->query->get('authorization_id');
+    error_log('[AUTH] Redirect callback received - code: '.($received_code ? 'present' : 'absent').', state: '.substr($received_state ?? '', 0, 6).'•••, usage_point_id: '.($received_usage_point ? 'present' : 'absent').', autorisation_id: '.($received_autorisation ? 'present' : 'absent'));
 
     # Check if error
     $error = $request->query->get('error');
@@ -278,9 +310,13 @@ class Controller extends AbstractController {
       return $this->html_error($error, $request->query->get('error_description'));
     }
 
+    $flow = $this->getParameter('app_flow');
+    $is_device_flow = $flow && (strtoupper($flow) == 'DEVICE');
+
     $get_state = $request->query->get('state');
-    # Verify input params
-    if($get_state == false || $request->query->get('code') == false) {
+    # Verify input params. Le paramètre code n'est exigé que pour le flux DEVICE :
+    # le nouveau retour Enedis est de la forme ?autorisation_id=...&state=...
+    if($get_state == false || ($is_device_flow && $request->query->get('code') == false)) {
       error_log('[AUTH] Missing required params in callback - state: '.($get_state ? 'present' : 'MISSING').', code: '.($request->query->get('code') ? 'present' : 'MISSING'));
       return $this->html_error('Invalid Request', 'Des paramètres manquent dans la requête');
     }
@@ -303,7 +339,13 @@ class Controller extends AbstractController {
       return $this->html_error('Invalid State', 'Format de state invalide');
     }
 
-  error_log('[AUTH] State content keys: '.json_encode(array_keys($state)));
+    # Retour déjà traité avec succès (rechargement de la page, sortie de l'iframe Enedis) :
+    # on réaffiche la confirmation au lieu d'une erreur « user_code introuvable ».
+    if (!empty($state['completed'])) {
+      error_log('[AUTH] Callback already completed for this state - showing confirmation again');
+      return $this->render('signed-in.html.twig');
+    }
+
     $user_code = $state['user_code'] ?? null;
     $device_code = $state['device_code'] ?? null;
 
@@ -323,11 +365,22 @@ class Controller extends AbstractController {
     
     error_log('[AUTH] Cache content keys: '.json_encode(array_keys(is_array($cache_content) ? $cache_content : get_object_vars($cache_content))));
 
-    $flow = $this->getParameter('app_flow');
-    if (!$flow || (strtoupper($flow) != 'DEVICE')) {
+    if (!$is_device_flow) {
       $usage_points_id = $request->query->get('usage_point_id');
-      if($usage_points_id == false) {
-        return $this->html_error('Invalid Request', 'Le paramètre usage_point_id manque dans la requête');
+      if($usage_points_id == false && $received_autorisation == false) {
+        return $this->html_error('Invalid Request', 'Le paramètre autorisation_id (ou usage_point_id) manque dans la requête');
+      }
+
+      if ($received_autorisation) {
+        # Nouveau parcours : échanger l'autorisation_id contre le PRM (API services souscrits)
+        $exchanged = $this->exchange_autorisation((string)$received_autorisation);
+        if ($exchanged) {
+          $usage_points_id = implode(',', $exchanged);
+        }
+        elseif ($usage_points_id == false) {
+          # On ne supprime rien du cache : recharger la page relance l'échange
+          return $this->html_error('Erreur Enedis', 'Votre consentement a bien été transmis, mais Enedis n\'a pas encore communiqué le compteur associé. Rechargez cette page dans quelques instants.');
+        }
       }
       $usage_points_id = str_replace(';', ',', $usage_points_id);
       $access_token = new \stdClass();
@@ -355,6 +408,9 @@ class Controller extends AbstractController {
         'token_response' => $access_token
       ], 120);
       $cache->delete($user_code);
+      # Rendre le retour idempotent (voir le contrôle « completed » plus haut)
+      $state['completed'] = true;
+      $cache->set('state:'.$get_state, $state, 300);
     }
     else {
       # Exchange the authorization code for an access token
@@ -694,11 +750,16 @@ class Controller extends AbstractController {
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::HTTP_CONNECT_TIMEOUT);
+    curl_setopt($ch, CURLOPT_TIMEOUT, self::HTTP_TIMEOUT);
     if ($this->getParameter('app_http_debug')) {        
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
     curl_setopt($ch, CURLOPT_HTTPHEADER, array('Accept: application/json', 'Content-Type: application/x-www-form-urlencoded'));
     $token_response = curl_exec($ch);
+    try {
+      $this->connectCache()->set('client_credentials_refreshed_at', time(), 3600);
+    } catch (\Throwable $e) {}
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $access_token = json_decode($token_response);
 
@@ -731,6 +792,8 @@ class Controller extends AbstractController {
     curl_setopt($ch, CURLOPT_URL, $this->getParameter('app_data_endpoint') . '/' . $path. '?' . $query2);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::HTTP_CONNECT_TIMEOUT);
+    curl_setopt($ch, CURLOPT_TIMEOUT, self::HTTP_TIMEOUT);
     if ($this->getParameter('app_http_debug')) {        
       curl_setopt($ch, CURLOPT_VERBOSE, true);
     }
@@ -741,6 +804,174 @@ class Controller extends AbstractController {
     $html_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
     return array($errno, $html_code, $data);
+  }
+
+  # ------------------------------------------------------------------
+  # Nouvelles API Enedis (bascule du 28/09/2026)
+  # ------------------------------------------------------------------
+
+  # Appel HTTP bas niveau vers la passerelle Enedis. Retourne [errno, code HTTP, corps].
+  private function enedis_http(string $method, string $path, array $query, $cg, ?array $json_body = null) {
+    $token_type = is_array($cg) ? ($cg['token_type'] ?? 'Bearer') : ($cg->token_type ?? 'Bearer');
+    $access_token = is_array($cg) ? ($cg['access_token'] ?? null) : ($cg->access_token ?? null);
+
+    $url = rtrim($this->getParameter('app_data_endpoint'), '/') . '/' . ltrim($path, '/');
+    if ($query) {
+      $url .= '?' . http_build_query($query);
+    }
+
+    $headers = ['Authorization: ' . $token_type . ' ' . $access_token, 'Accept: application/json'];
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, self::HTTP_CONNECT_TIMEOUT);
+    curl_setopt($ch, CURLOPT_TIMEOUT, self::HTTP_TIMEOUT);
+    if ($this->getParameter('app_http_debug')) {
+      curl_setopt($ch, CURLOPT_VERBOSE, true);
+    }
+    if ($method === 'POST') {
+      curl_setopt($ch, CURLOPT_POST, true);
+      curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($json_body ?? new \stdClass()));
+      # Content-Type uniquement avec un corps : Enedis le refuse sur les GET
+      $headers[] = 'Content-Type: application/json';
+    }
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $data = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $errno = curl_errno($ch);
+    curl_close($ch);
+    return array($errno, $http_code, $data);
+  }
+
+  # Un 403 peut signaler un jeton expiré OU un refus propre au PRM. On ne renouvelle
+  # donc le jeton sur 403 que s'il n'a pas déjà été renouvelé très récemment.
+  private function can_refresh_credentials_on_forbidden(): bool {
+    try {
+      $last = intval($this->connectCache()->get('client_credentials_refreshed_at') ?? 0);
+    } catch (\Throwable $e) {
+      return true;
+    }
+    return (time() - $last) >= self::CREDENTIALS_REFRESH_MIN_INTERVAL;
+  }
+
+  # Appel d'une nouvelle API avec le jeton client_credentials : renouvellement du jeton
+  # sur 401/403 et une seconde tentative sur erreur réseau ou 5xx.
+  # Retourne [errno, code HTTP, corps brut, corps JSON décodé ou null].
+  private function enedis_call(string $method, string $path, array $query = [], ?array $json_body = null) {
+    $cache = $this->connectCache();
+    $cg = $cache->get('client_credentials');
+    if (!$cg) {
+      $cg = $this->refresh_client_credentials();
+      if (!$cg) {
+        return array(0, Response::HTTP_UNAUTHORIZED, '', ['code' => 'Unauthorized', 'message' => 'Cannot get client credentials']);
+      }
+    }
+
+    list($errno, $http_code, $data) = $this->enedis_http($method, $path, $query, $cg, $json_body);
+
+    if ($errno == 0 && ($http_code == Response::HTTP_UNAUTHORIZED
+        || ($http_code == Response::HTTP_FORBIDDEN && $this->can_refresh_credentials_on_forbidden()))) {
+      $fresh = $this->refresh_client_credentials();
+      if ($fresh) {
+        list($errno, $http_code, $data) = $this->enedis_http($method, $path, $query, $fresh, $json_body);
+      }
+    }
+
+    if ($errno != 0 || ($http_code >= 500 && $http_code < 600)) {
+      usleep(200000); // 200ms
+      $cg = $cache->get('client_credentials') ?: $cg;
+      list($errno, $http_code, $data) = $this->enedis_http($method, $path, $query, $cg, $json_body);
+    }
+
+    $decoded = is_string($data) && $data !== '' ? json_decode($data, true) : null;
+    return array($errno, $http_code, $data, is_array($decoded) ? $decoded : null);
+  }
+
+  # Échange un autorisation_id contre la liste des PRM via l'API « services souscrits ».
+  # Retourne un tableau de PRM, vide en cas d'échec.
+  private function exchange_autorisation(string $autorisation_id): array {
+    $autorisation_id = trim($autorisation_id);
+    if (!preg_match('/^[A-Za-z0-9_-]{1,64}\z/', $autorisation_id)) {
+      error_log('[AUTH] autorisation_id au format inattendu, échange impossible');
+      return [];
+    }
+
+    $path = trim((string)$this->getParameter('app_subscribed_services_path'), '/');
+    $body = EnedisTranslator::subscribedServicesRequest($autorisation_id);
+
+    # Le service peut ne pas être visible immédiatement après le consentement
+    for ($attempt = 1; $attempt <= 3; $attempt++) {
+      list($errno, $http_code, $data, $decoded) = $this->enedis_call('POST', $path, [], $body);
+      $prms = ($errno == 0 && $http_code >= 200 && $http_code < 300) ? EnedisTranslator::extractUsagePoints($decoded) : [];
+      error_log('[AUTH] Services souscrits - tentative '.$attempt.' - HTTP '.$http_code.' - errno '.$errno.' - PRM trouvés: '.count($prms));
+      if ($prms) {
+        return $prms;
+      }
+      # Inutile d'insister sur une erreur de requête ou de droits
+      if ($errno == 0 && $http_code >= 400 && $http_code < 500) {
+        $detail = EnedisTranslator::errorToLegacy($decoded, $http_code);
+        error_log('[AUTH] Services souscrits refusé: '.$detail['error'].' - '.$detail['error_description']);
+        break;
+      }
+      if ($attempt < 3) {
+        usleep(700000); // 700ms
+      }
+    }
+    return [];
+  }
+
+  # Interroge les nouvelles API pour un chemin v5 et reconstruit la réponse au format v5.
+  # Retourne ['ok' => bool, 'status' => code HTTP (0 si erreur réseau), 'body' => tableau].
+  private function fetch_translated(array $plan): array {
+    if ($plan['kind'] === EnedisTranslator::KIND_CONTRACT) {
+      list($c_errno, $c_code, $c_data, $contract) = $this->enedis_call('GET', $plan['contract_path']);
+      list($m_errno, $m_code, $m_data, $metering) = $this->enedis_call('GET', $plan['metering_situation_path']);
+      $contract_ok = ($c_errno == 0 && $c_code == Response::HTTP_OK && $contract);
+      $metering_ok = ($m_errno == 0 && $m_code == Response::HTTP_OK && $metering);
+      error_log('[DATA] Nouvelles API contrat - situation contractuelle HTTP '.$c_code.', situation comptage HTTP '.$m_code);
+
+      if ($contract_ok || $metering_ok) {
+        return [
+          'ok' => true,
+          'status' => Response::HTTP_OK,
+          'body' => EnedisTranslator::contractToLegacy(
+            $contract_ok ? $contract : null,
+            $metering_ok ? $metering : null,
+            $plan['usage_point_id']
+          ),
+        ];
+      }
+      $status = $c_errno != 0 ? 0 : $c_code;
+      return ['ok' => false, 'status' => $status, 'body' => EnedisTranslator::errorToLegacy($contract, $status)];
+    }
+
+    list($errno, $http_code, $data, $decoded) = $this->enedis_call('GET', $plan['path'], $plan['query']);
+    error_log('[DATA] Nouvelle API mesure '.$plan['path'].' - HTTP '.$http_code.' - errno '.$errno);
+    if ($errno != 0) {
+      return ['ok' => false, 'status' => 0, 'body' => ['error' => 'invalid_request', 'error_description' => 'cURL error ' . strval($errno)]];
+    }
+    if ($http_code == Response::HTTP_OK) {
+      if (EnedisTranslator::isMeasureResponse($decoded)) {
+        return [
+          'ok' => true,
+          'status' => Response::HTTP_OK,
+          'body' => EnedisTranslator::measureToLegacy($decoded, $plan, (string)$this->getParameter('app_load_curve_timestamp')),
+        ];
+      }
+      error_log('[DATA] Réponse 200 de la nouvelle API mesure au format inattendu');
+      return ['ok' => false, 'status' => Response::HTTP_BAD_GATEWAY, 'body' => ['error' => 'unexpected_response', 'error_description' => 'Réponse Enedis au format inattendu']];
+    }
+    return ['ok' => false, 'status' => $http_code, 'body' => EnedisTranslator::errorToLegacy($decoded, $http_code)];
+  }
+
+  private function translated_response(Request $request, int $status, array $body, string $source): Response {
+    $response = new JsonResponse($body);
+    $response->setStatusCode($status > 0 ? $status : Response::HTTP_BAD_GATEWAY);
+    $response->headers->set('via', $request->getProtocolVersion() . ' ' . $request->getHttpHost());
+    $response->headers->set('X-Enedis-Proxy-Source', $source);
+    return $response;
   }
 
   # Proxy to data (GET)
@@ -758,6 +989,7 @@ class Controller extends AbstractController {
     if($usage_point_id == null) {
       return $this->error('invalid_request', 'Missing usage_point_id');
     }
+    $usage_point_id = (string)$usage_point_id;
 
     $cache = $this->connectCache();
     if(!$this->getParameter('app_disable_data_enpoint_auth')) {
@@ -792,6 +1024,40 @@ class Controller extends AbstractController {
     $cache->expire($bucket, 60);
     #####################
 
+    # Nouvelles API Enedis : l'application appelle toujours les chemins v5, le proxy
+    # interroge les nouvelles API et renvoie la réponse au format v5.
+    $mode = $this->apiMode();
+    $plan = null;
+    $new_failure = null;
+    if ($mode !== 'legacy') {
+      $plan = EnedisTranslator::plan($path, array_filter($request->query->all()));
+      if ($plan && !EnedisTranslator::isValidUsagePointId($usage_point_id)) {
+        return $this->error('invalid_request', 'Invalid usage_point_id');
+      }
+    }
+    if ($plan) {
+      $skip_key = 'new_api_skip:'.$plan['api'].':'.$usage_point_id;
+      if ($mode === 'auto' && $cache->get($skip_key)) {
+        error_log('[DATA] Nouvelle API '.$plan['api'].' ignorée temporairement pour ce PRM, repli sur l\'API v5');
+        $new_failure = ['ok' => false, 'status' => Response::HTTP_FORBIDDEN, 'body' => ['error' => 'forbidden', 'error_description' => 'Nouvelle API refusée récemment pour ce PRM']];
+      }
+      else {
+        $result = $this->fetch_translated($plan);
+        if ($result['ok']) {
+          return $this->translated_response($request, Response::HTTP_OK, $result['body'], 'new');
+        }
+        # Quota dépassé : ne pas doubler les appels avec un repli
+        if ($mode === 'new' || $result['status'] == Response::HTTP_TOO_MANY_REQUESTS) {
+          return $this->translated_response($request, $result['status'], $result['body'], 'new');
+        }
+        $new_failure = $result;
+        if (in_array($result['status'], [Response::HTTP_UNAUTHORIZED, Response::HTTP_FORBIDDEN])) {
+          $cache->set($skip_key, 1, self::NEW_API_SKIP_TTL);
+        }
+        error_log('[DATA] Nouvelle API '.$plan['api'].' en échec (HTTP '.$result['status'].'), repli sur l\'API v5');
+      }
+    }
+
     # En mode CONSENT: utiliser client_credentials pour appeler l'API Data Enedis
     # Le token user sert uniquement à valider l'accès au usage_point_id
     $cg = $cache->get('client_credentials');
@@ -820,6 +1086,25 @@ class Controller extends AbstractController {
       list($errno, $html_code, $data) = self::get_data($path, $cg, $request->query);
     }
 
+    # Les deux générations d'API ont échoué : choisir l'erreur la plus utile
+    if ($new_failure && ($errno != 0 || $html_code < 200 || $html_code >= 300)) {
+      error_log('[DATA] Repli API v5 en échec aussi (HTTP '.$html_code.', errno '.$errno.')');
+      # Erreur métier de la nouvelle API (requête invalide, pas de mesure...) : on la renvoie
+      if (in_array($new_failure['status'], [Response::HTTP_BAD_REQUEST, Response::HTTP_NOT_FOUND, Response::HTTP_CONFLICT, Response::HTTP_UNPROCESSABLE_ENTITY])) {
+        return $this->translated_response($request, $new_failure['status'], $new_failure['body'], 'new');
+      }
+      # Contrat indisponible des deux côtés : réponse minimale pour ne pas bloquer
+      # l'ajout du compteur (le jeton de l'utilisateur a déjà été validé pour ce PRM)
+      if ($plan['kind'] === EnedisTranslator::KIND_CONTRACT && $this->getParameter('app_contract_degraded_fallback')) {
+        error_log('[DATA] Contrat indisponible, réponse minimale renvoyée');
+        return $this->translated_response($request, Response::HTTP_OK, EnedisTranslator::contractToLegacy(null, null, $usage_point_id), 'degraded');
+      }
+      # Une fois les API v5 arrêtées, leur réponse n'a plus de sens : renvoyer l'erreur des nouvelles API
+      if ($errno != 0 || in_array($html_code, [Response::HTTP_NOT_FOUND, Response::HTTP_GONE, Response::HTTP_METHOD_NOT_ALLOWED]) || $html_code >= 500) {
+        return $this->translated_response($request, $new_failure['status'], $new_failure['body'], 'new');
+      }
+    }
+
     if ($errno != 0) {
       return $this->error('invalid_request', 'cURL error ' . strval($errno));
     }
@@ -830,6 +1115,7 @@ class Controller extends AbstractController {
         $response->headers->set('content-type', self::$headers['content-type']);
       }
       $response->headers->set('via', $request->getProtocolVersion() . ' ' . $request->getHttpHost());
+      $response->headers->set('X-Enedis-Proxy-Source', 'legacy');
       $response->setContent($data);
       return $response;
     }

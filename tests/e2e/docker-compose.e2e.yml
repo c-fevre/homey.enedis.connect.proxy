@@ -1,0 +1,64 @@
+# Environnement de test de bout en bout : proxy (3 modes) + PostgreSQL + faux serveur Enedis.
+# Lancement : ./tests/e2e/run.sh
+name: enedis-proxy-e2e
+
+x-proxy: &proxy
+  build:
+    context: ../..
+  image: enedis-proxy-e2e:local
+  volumes:
+    - ./env.e2e:/var/www/html/.env:ro
+  depends_on:
+    db:
+      condition: service_healthy
+    mock:
+      condition: service_started
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/health | grep -q '\"status\":\"ok\"' || exit 1"]
+    interval: 3s
+    timeout: 5s
+    retries: 40
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: e2e
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2e -d e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock:
+    image: php:8.2-cli
+    command: ["php", "-S", "0.0.0.0:9000", "/mock/router.php"]
+    volumes:
+      - ./mock-enedis:/mock:ro
+    ports:
+      - "127.0.0.1:19000:9000"
+
+  proxy-auto:
+    <<: *proxy
+    environment:
+      ENEDIS_API_MODE: auto
+    ports:
+      - "127.0.0.1:18080:80"
+
+  proxy-new:
+    <<: *proxy
+    environment:
+      ENEDIS_API_MODE: new
+    ports:
+      - "127.0.0.1:18081:80"
+
+  proxy-legacy:
+    <<: *proxy
+    environment:
+      ENEDIS_API_MODE: legacy
+    ports:
+      - "127.0.0.1:18082:80"

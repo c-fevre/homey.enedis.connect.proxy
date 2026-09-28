@@ -158,12 +158,50 @@ Enedis CONSENT Flow Architecture
 
 This proxy implements Enedis specific CONSENT flow:
 
-1. User authenticates via Enedis OAuth and grants consent
-2. Enedis redirects with `usage_point_id` (no authorization_code)
-3. Proxy generates internal `access_token` and `refresh_token` for the device
-4. Device uses these tokens to authenticate API requests to the proxy
-5. Proxy automatically obtains `client_credentials` token from Enedis (valid 3h30, shared across all consented users)
-6. Proxy forwards data requests to Enedis API with the `client_credentials` token
+1. User authenticates via Enedis OAuth (`dataconnect/v2/oauth2/authorize`) and grants consent
+2. Enedis redirects with `autorisation_id` and `state` (no authorization_code, no PRM).
+   The legacy `usage_point_id` form is still accepted
+3. Proxy exchanges the `autorisation_id` for the PRM through the `subscribed_services/v1` API
+4. Proxy generates internal `access_token` and `refresh_token` for the device
+5. Device uses these tokens to authenticate API requests to the proxy
+6. Proxy automatically obtains `client_credentials` token from Enedis (valid 3h30, shared across all consented users)
+7. Proxy forwards data requests to Enedis API with the `client_credentials` token
+
+Enedis API switchover (2026-09-28)
+----------------------------------
+
+Homey apps keep calling the v5 paths (`metering_data_dc/v5/daily_consumption?usage_point_id=...`)
+and keep receiving the v5 response format. The proxy translates:
+
+| v5 path called by the app | New Enedis API called by the proxy |
+|---|---|
+| `metering_data_dc/v5/daily_consumption` | `mesure_synchrone_auto/v2/consommation_quotidienne` |
+| `metering_data_clc/v5/consumption_load_curve` | `mesure_synchrone_auto/v2/courbe_de_charge_consommation` |
+| `metering_data_dp/v5/daily_production` | `mesure_synchrone_auto/v2/production_quotidienne` |
+| `metering_data_plc/v5/production_load_curve` | `mesure_synchrone_auto/v2/courbe_de_charge_production` |
+| `metering_data_dcmp/v5/daily_consumption_max_power` | `mesure_synchrone_auto/v2/puissance_conso_max_quotidienne` |
+| `customers_upc/v5/usage_points/contracts` | `situation_contrat_auto/v1/{prm}` + `comptage_auto/v1/{prm}` |
+
+`ENEDIS_API_MODE` selects the behaviour:
+
+- `auto` (default): new APIs first, v5 APIs as a fallback. Use during the transition
+- `new`: new APIs only. Use once Enedis has shut the v5 APIs down, to avoid useless calls
+- `legacy`: v5 APIs only
+
+The `X-Enedis-Proxy-Source` response header tells which generation answered
+(`new`, `legacy`, or `degraded` for the minimal contract returned when no contract API answers).
+`GET /health` returns the authorize version and the API mode in use.
+
+Tests
+-----
+
+```bash
+# Unit tests (pure translation logic)
+composer install && vendor/bin/phpunit --testsuite unit
+
+# End-to-end tests: production Docker image + PostgreSQL + mock Enedis server
+./tests/e2e/run.sh
+```
 
 Cache Management
 ----------------
