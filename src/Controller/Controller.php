@@ -944,7 +944,9 @@ class Controller extends AbstractController {
         ];
       }
       $status = $c_errno != 0 ? 0 : $c_code;
-      return ['ok' => false, 'status' => $status, 'body' => EnedisTranslator::errorToLegacy($contract, $status)];
+      $error_body = EnedisTranslator::errorToLegacy($contract, $status);
+      error_log('[DATA] Motif situation contractuelle: '.$this->failure_reason($error_body).' | situation comptage: '.$this->failure_reason(EnedisTranslator::errorToLegacy($metering, $m_code)));
+      return ['ok' => false, 'status' => $status, 'body' => $error_body];
     }
 
     list($errno, $http_code, $data, $decoded) = $this->enedis_call('GET', $plan['path'], $plan['query']);
@@ -963,7 +965,20 @@ class Controller extends AbstractController {
       error_log('[DATA] Réponse 200 de la nouvelle API mesure au format inattendu');
       return ['ok' => false, 'status' => Response::HTTP_BAD_GATEWAY, 'body' => ['error' => 'unexpected_response', 'error_description' => 'Réponse Enedis au format inattendu']];
     }
-    return ['ok' => false, 'status' => $http_code, 'body' => EnedisTranslator::errorToLegacy($decoded, $http_code)];
+    $error_body = EnedisTranslator::errorToLegacy($decoded, $http_code);
+    # Une réponse non JSON (page d'erreur de la passerelle) est résumée par sa longueur
+    $raw_hint = $decoded === null ? ' (corps non JSON, longueur '.(is_string($data) ? strlen($data) : 0).')' : '';
+    error_log('[DATA] Motif du refus: '.$this->failure_reason($error_body).$raw_hint);
+    return ['ok' => false, 'status' => $http_code, 'body' => $error_body];
+  }
+
+  # Motif d'un refus Enedis pour les logs : code et message, sans donnée personnelle
+  # (les PRM éventuellement cités dans le message sont masqués).
+  private function failure_reason(array $error_body): string {
+    $reason = ($error_body['error'] ?? '?') . ' - ' . ($error_body['error_description'] ?? '?');
+    $reason = preg_replace('/\d{14}/', '[PRM]', $reason);
+    $reason = preg_replace('/[\r\n]+/', ' ', $reason);
+    return mb_substr($reason, 0, 300);
   }
 
   private function translated_response(Request $request, int $status, array $body, string $source): Response {

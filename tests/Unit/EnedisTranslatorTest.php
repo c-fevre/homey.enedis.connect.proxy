@@ -311,6 +311,9 @@ class EnedisTranslatorTest extends TestCase
         $fallback = EnedisTranslator::errorToLegacy(null, 500);
         $this->assertSame('enedis_error_500', $fallback['error']);
         $this->assertNotSame('', $fallback['error_description']);
+        $gateway = EnedisTranslator::errorToLegacy(['fault' => ['code' => 900908, 'message' => 'Resource forbidden', 'description' => 'User is NOT authorized to access the Resource']], 403);
+        $this->assertSame('900908', $gateway['error']);
+        $this->assertSame('Resource forbidden : User is NOT authorized to access the Resource', $gateway['error_description']);
         $legacyShape = EnedisTranslator::errorToLegacy(['error' => 'no_data_found', 'error_description' => 'x'], 404);
         $this->assertSame('no_data_found', $legacyShape['error']);
     }
