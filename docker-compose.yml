@@ -16,6 +16,13 @@ services:
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_ADDRESS}:${DB_PORT}/${DB_NAME}
     env_file:
       - .env
+    volumes:
+      # Symfony\Dotenv exige la présence du fichier .env au démarrage, même quand
+      # toutes les variables sont déjà injectées par env_file (bootEnv appelle
+      # loadEnv, qui lève PathException si ni .env ni .env.dist n'existe).
+      # Le .dockerignore exclut .env de l'image — à raison, les secrets n'ont rien
+      # à y faire — on le fournit donc au runtime depuis le VPS.
+      - ./.env:/var/www/html/.env:ro
     depends_on:
       db:
         condition: service_healthy
@@ -23,7 +30,9 @@ services:
       - enedis-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/health || exit 1"]
+      # On teste le CONTENU, pas seulement le code HTTP : une fatale PHP répond
+      # 200 avec le message d'erreur en corps, et passerait donc pour saine.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/health | grep -q '\"status\":\"ok\"' || exit 1"]
       interval: 20s
       timeout: 5s
       retries: 5

@@ -35,3 +35,14 @@ jobs:
       - name: Lint PHP
         run: |
           find . -type f -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -I{} php -l {}
+
+      - name: Tests unitaires
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress --no-scripts
+          vendor/bin/phpunit --testsuite unit
+
+      # Proxy réel (image Docker de production) + PostgreSQL + faux serveur Enedis
+      - name: Tests de bout en bout
+        run: |
+          rm -rf vendor composer.lock
+          ./tests/e2e/run.sh

@@ -6,14 +6,30 @@
 parameters:
     env(LIMIT_REQUESTS_PER_MINUTE): '12'
     env(VERSION_MIN): ''
-    env(AUTHORIZATION_ENDPOINT): 'https://mon-compte-particulier.enedis.fr/dataconnect/v1/oauth2/authorize'
+    # v2 depuis la bascule Enedis du 28/09/2026 (retour ?autorisation_id=...&state=...)
+    env(AUTHORIZATION_ENDPOINT): 'https://mon-compte-particulier.enedis.fr/dataconnect/v2/oauth2/authorize'
     # Token endpoint aligné sur l'authorize v1 d'Enedis
     env(TOKEN_ENDPOINT): 'https://gw.ext.prod.api.enedis.fr/v1/oauth2/token'
     env(DATA_ENDPOINT): 'https://gw.ext.prod.api.enedis.fr'
     env(DISABLE_DATA_ENPOINT_AUTH): ''    
     env(PKCE): ''
     env(FLOW): ''
-    env(DURATION): 'P3Y'
+    # 3 ans exprimés en JOURS, et non 'P3Y'. Le portail Enedis valide la durée avec
+    # `moment.duration(d).months() !== 0 || .days() !== 0` : une durée en années
+    # pleines a months()=0 et days()=0, donc P3Y/P2Y/P1Y échouent au contrôle et
+    # affichent « Une erreur est survenue » avant tout consentement possible.
+    # P1095D passe le contrôle et transmet exactement 1095 jours (P3Y en envoyait 1096,
+    # soit un jour de plus que le maximum de 3 ans autorisé).
+    env(DURATION): 'P1095D'
+
+    # Accès aux API de données : auto (nouvelles API puis repli v5) | new | legacy
+    env(ENEDIS_API_MODE): 'auto'
+    # API « services souscrits » : échange de l'autorisation_id contre le PRM
+    env(SUBSCRIBED_SERVICES_PATH): 'subscribed_services/v1'
+    # Horodatage des points de courbe de charge renvoyés par Enedis : auto | end | start
+    env(LOAD_CURVE_TIMESTAMP): 'auto'
+    # Réponse contrat minimale si aucune API contrat ne répond (évite de bloquer l'appairage)
+    env(CONTRACT_DEGRADED_FALLBACK): '1'
 
     env(TRUSTED_PROXIES): ''
     
@@ -32,6 +48,10 @@ parameters:
     app_client_id: '%env(string:CLIENT_ID)%'
     app_client_secret: '%env(string:CLIENT_SECRET)%'
     app_duration: '%env(string:DURATION)%'
+    app_enedis_api_mode: '%env(string:ENEDIS_API_MODE)%'
+    app_subscribed_services_path: '%env(string:SUBSCRIBED_SERVICES_PATH)%'
+    app_load_curve_timestamp: '%env(string:LOAD_CURVE_TIMESTAMP)%'
+    app_contract_degraded_fallback: '%env(bool:CONTRACT_DEGRADED_FALLBACK)%'
     app_db_address: '%env(string:DB_ADDRESS)%'
     app_db_port: '%env(string:DB_PORT)%'
     app_db_user: '%env(string:DB_USER)%'

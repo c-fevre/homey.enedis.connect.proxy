@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-09-28
+
+Enedis DataConnect switchover of 2026-09-28 (Implementing Act). Installed Homey apps keep
+working unchanged: they still call the v5 paths and receive the v5 response format.
+
+### Added
+- Consent callback accepts the new `?autorisation_id=...&state=...` form and exchanges the
+  authorization id for the PRM through the `subscribed_services/v1` API (with retries)
+- `/data/proxy/{path}` translates v5 requests to the new APIs (`mesure_synchrone_auto/v2`,
+  `situation_contrat_auto/v1`, `comptage_auto/v1`) and converts responses back to the v5 format
+- `ENEDIS_API_MODE` (`auto` | `new` | `legacy`): `auto` tries the new APIs first and falls
+  back to the v5 APIs on failure. Switch to `new` once Enedis has shut the v5 APIs down
+- `SUBSCRIBED_SERVICES_PATH`, `LOAD_CURVE_TIMESTAMP`, `CONTRACT_DEGRADED_FALLBACK` settings
+- `X-Enedis-Proxy-Source` response header (`new` | `legacy` | `degraded`)
+- `/health` reports the authorize version and the API mode in use
+- Unit tests (`tests/Unit`) and end-to-end tests against a mock Enedis server (`tests/e2e`)
+
+### Changed
+- Default `AUTHORIZATION_ENDPOINT` is now `dataconnect/v2/oauth2/authorize`
+- Consent callback is idempotent: reloading it shows the confirmation again
+- The `code` parameter is no longer required on the consent callback (CONSENT flow)
+- Network timeouts on all calls to Enedis (10s connect, 30s total)
+
 ## [1.1.0] - 2025-11-16
 
 ### Added

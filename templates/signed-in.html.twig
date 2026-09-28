@@ -9,6 +9,11 @@
 <p>Vous pouvez fermer cette page et retourner sur Homey.</p>
 
 <script>
-window.history.replaceState({}, false, "{{ url('device') }}"');
+// Enedis peut charger cette page dans son iframe de consentement : on remonte au
+// niveau supérieur pour que l'utilisateur voie bien la confirmation en pleine page.
+if (window.top !== window.self) {
+  window.top.location.href = window.location.href;
+}
+window.history.replaceState({}, '', "{{ url('device') }}");
 </script>
 {% endblock %}

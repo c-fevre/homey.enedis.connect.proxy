@@ -134,7 +134,7 @@ class GlobalTest extends WebTestCase
 
         $client->request('GET', '/auth/redirect', ['code' => $jsonResponseCode['user_code'], 'state' => $redirect_params['state']]);
         //dump($client->getResponse()->getContent());
-        $this->assertSelectorTextContains('p', 'Le paramètre usage_point_id manque dans la requête', '/auth/redirect usage_point_id missing (FLOW!=DEVICE)');
+        $this->assertSelectorTextContains('p', 'Le paramètre autorisation_id (ou usage_point_id) manque dans la requête', '/auth/redirect usage_point_id missing (FLOW!=DEVICE)');
 
         $client->request('GET', '/auth/redirect', ['code' => $jsonResponseCode['user_code'], 'state' => $redirect_params['state'], 'usage_point_id' => $usage_point_id]);
         //dump($client->getResponse()->getContent());
