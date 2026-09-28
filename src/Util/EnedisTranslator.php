@@ -252,8 +252,15 @@ class EnedisTranslator {
     if (is_array($body)) {
       # Certaines erreurs sont renvoyées sous forme de tableau d'erreurs
       $first = array_is_list($body) && isset($body[0]) && is_array($body[0]) ? $body[0] : $body;
+      # La passerelle Enedis renvoie ses propres erreurs sous la forme {"fault": {...}}
+      if (isset($first['fault']) && is_array($first['fault'])) {
+        $first = $first['fault'];
+      }
       $code = $first['code'] ?? $first['error'] ?? null;
       $message = $first['message'] ?? $first['libelle'] ?? $first['error_description'] ?? null;
+      if (is_scalar($message) && is_scalar($first['description'] ?? null) && (string)$first['description'] !== '') {
+        $message = $message . ' : ' . $first['description'];
+      }
     }
     $code = is_scalar($code) && (string)$code !== '' ? (string)$code : 'enedis_error_' . $status;
     $message = is_scalar($message) && (string)$message !== '' ? (string)$message : 'Erreur Enedis (HTTP ' . $status . ')';
