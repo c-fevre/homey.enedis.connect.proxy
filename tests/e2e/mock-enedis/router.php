@@ -19,6 +19,8 @@ function defaults(): array {
       'subscribed_status' => 200,
       'subscribed_empty_first' => 0,   # nombre de premières réponses sans service
       'new_measure_status' => 200,
+      'rate_limit_first' => 0,        # nombre de premiers appels mesure répondant 429
+      'measure_calls' => 0,
       'new_contract_status' => 200,
       'new_metering_status' => 200,
       'legacy_status' => 200,
@@ -109,6 +111,7 @@ if ($path === '/__control') {
   $changes = json_decode($rawBody, true) ?: [];
   $state['scenario'] = array_merge($state['scenario'], $changes);
   $state['subscribed_calls'] = 0;
+  $state['scenario']['measure_calls'] = 0;
   save_state($state);
   return respond(200, $state['scenario']);
 }
@@ -204,8 +207,12 @@ $newResources = [
   'courbe_de_charge_production' => ['PROD', 'load_curve'],
 ];
 if (preg_match('#^/mesure_synchrone_auto/v2/([a-z_]+)$#', $path, $m) && isset($newResources[$m[1]])) {
+  $state['scenario']['measure_calls']++;
   save_state($state);
   [$metier, $type] = $newResources[$m[1]];
+  if ($state['scenario']['measure_calls'] <= $scenario['rate_limit_first']) {
+    return respond(429, ['code' => 'SGT429', 'message' => 'SLA dépassé']);
+  }
   if ($scenario['new_measure_status'] !== 200) {
     $messages = [403 => "Le client n'est pas autorisé pour le point demandé", 404 => 'Pas de mesure trouvée pour ce point', 429 => 'SLA dépassé'];
     return respond($scenario['new_measure_status'], ['code' => 'SGT' . $scenario['new_measure_status'], 'message' => $messages[$scenario['new_measure_status']] ?? 'Erreur simulée']);
