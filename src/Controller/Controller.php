@@ -23,6 +23,8 @@ class Controller extends AbstractController {
   const NEW_API_SKIP_TTL = 600;
   # Délai minimal entre deux renouvellements du jeton client_credentials sur un 403
   const CREDENTIALS_REFRESH_MIN_INTERVAL = 60;
+  # Pause avant la seconde tentative après un 429 (microsecondes)
+  const RATE_LIMIT_RETRY_DELAY_US = 700000;
 
   #TODO varier erreur 400 (403 pour token invalide ? Cf. plugin.py)
   private function error($error, $error_description=false, $errno = Response::HTTP_BAD_REQUEST) {
@@ -885,6 +887,14 @@ class Controller extends AbstractController {
       list($errno, $http_code, $data) = $this->enedis_http($method, $path, $query, $cg, $json_body);
     }
 
+    # Quota Enedis de 5 appels par seconde : les relevés simultanés de plusieurs Homey
+    # déclenchent des rafales de 429. Une seule nouvelle tentative après une courte pause.
+    if ($errno == 0 && $http_code == Response::HTTP_TOO_MANY_REQUESTS) {
+      usleep(self::RATE_LIMIT_RETRY_DELAY_US);
+      $cg = $cache->get('client_credentials') ?: $cg;
+      list($errno, $http_code, $data) = $this->enedis_http($method, $path, $query, $cg, $json_body);
+    }
+
     $decoded = is_string($data) && $data !== '' ? json_decode($data, true) : null;
     return array($errno, $http_code, $data, is_array($decoded) ? $decoded : null);
   }
@@ -956,11 +966,9 @@ class Controller extends AbstractController {
     }
     if ($http_code == Response::HTTP_OK) {
       if (EnedisTranslator::isMeasureResponse($decoded)) {
-        return [
-          'ok' => true,
-          'status' => Response::HTTP_OK,
-          'body' => EnedisTranslator::measureToLegacy($decoded, $plan, (string)$this->getParameter('app_load_curve_timestamp')),
-        ];
+        $legacy = EnedisTranslator::measureToLegacy($decoded, $plan, (string)$this->getParameter('app_load_curve_timestamp'));
+        error_log('[DATA] Traduction '.$plan['type'].': '.EnedisTranslator::measureDiagnostics($decoded, $legacy, $plan));
+        return ['ok' => true, 'status' => Response::HTTP_OK, 'body' => $legacy];
       }
       error_log('[DATA] Réponse 200 de la nouvelle API mesure au format inattendu');
       return ['ok' => false, 'status' => Response::HTTP_BAD_GATEWAY, 'body' => ['error' => 'unexpected_response', 'error_description' => 'Réponse Enedis au format inattendu']];

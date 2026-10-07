@@ -107,7 +107,7 @@ test.beforeEach(async () => {
   await mockControl({
     token_status: 200, subscribed_status: 200, subscribed_empty_first: 0,
     new_measure_status: 200, new_contract_status: 200, new_metering_status: 200,
-    legacy_status: 200, timestamp_style: 'end', unit: 'base',
+    legacy_status: 200, timestamp_style: 'end', unit: 'base', rate_limit_first: 0,
   });
   await mockClearRequests();
 });
@@ -406,6 +406,18 @@ test('quota dépassé (429) : renvoyé tel quel, sans repli', async () => {
   const r = await getData(AUTO, ENDPOINTS[0].legacy, prm, tokens.access_token);
   assert.equal(r.status, 429);
   assert.equal((await dataCalls()).filter(c => c.path.startsWith('/metering_data')).length, 0);
+});
+
+test('quota dépassé une fois : nouvelle tentative réussie', async () => {
+  const prm = nextPrm();
+  const tokens = await pair(prm);
+  await mockControl({ rate_limit_first: 1 });
+  await mockClearRequests();
+  const r = await getData(AUTO, ENDPOINTS[1].legacy, prm, tokens.access_token);
+  assert.equal(r.status, 200);
+  assert.equal(r.source, 'new');
+  assert.equal((await dataCalls()).length, 2, 'deux appels à la nouvelle API, aucun repli');
+  assert.deepEqual(r.json.meter_reading.interval_reading, await reference('CONS', 'load_curve'));
 });
 
 test('contrat indisponible partout : réponse minimale pour ne pas bloquer l\'appairage', async () => {

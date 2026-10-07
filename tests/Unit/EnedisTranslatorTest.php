@@ -237,6 +237,28 @@ class EnedisTranslatorTest extends TestCase
         $this->assertSame('1', $json->meter_reading->interval_reading[0]->value);
     }
 
+    public function testMeasureDiagnosticsAreAnonymousAndDescribeShift(): void
+    {
+        $plan = $this->plan('metering_data_clc/v5/consumption_load_curve');
+        $startStyle = $this->loadCurveBody([
+            ['v' => '800', 'd' => '2026-09-26 00:00:00', 'p' => 'PT30M'],
+            ['v' => '900', 'd' => '2026-09-26 23:30:00', 'p' => 'PT30M'],
+        ], 'kW');
+        $legacy = EnedisTranslator::measureToLegacy($startStyle, $plan, 'auto');
+        $diag = EnedisTranslator::measureDiagnostics($startStyle, $legacy, $plan);
+        $this->assertSame('points=2, premier=00:30:00, dernier=00:00:00, unite=kW, format_brut=9999-99-99 99:99:99, decalage=oui', $diag);
+        $this->assertStringNotContainsString(self::PRM, $diag);
+
+        $endStyle = $this->loadCurveBody([['v' => '1', 'd' => '2026-09-26T00:30:00+02:00']]);
+        $legacy = EnedisTranslator::measureToLegacy($endStyle, $plan, 'auto');
+        $this->assertStringContainsString('format_brut=9999-99-99T99:99:99+99:99, decalage=non', EnedisTranslator::measureDiagnostics($endStyle, $legacy, $plan));
+
+        $daily = ['grandeur' => [['grandeurMetier' => 'CONS', 'unite' => 'Wh', 'points' => [['v' => '1', 'd' => '2026-09-25']]]]];
+        $dailyPlan = $this->plan('metering_data_dc/v5/daily_consumption');
+        $this->assertSame('points=1, premier=2026-09-25, dernier=2026-09-25, unite=Wh, format_brut=9999-99-99, decalage=n/a',
+            EnedisTranslator::measureDiagnostics($daily, EnedisTranslator::measureToLegacy($daily, $dailyPlan), $dailyPlan));
+    }
+
     // ------------------------------------------------ contractToLegacy()
 
     public function testContractFromBothApis(): void

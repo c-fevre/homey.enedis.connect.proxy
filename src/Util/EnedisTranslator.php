@@ -182,6 +182,39 @@ class EnedisTranslator {
   }
 
   /**
+   * Résumé non personnel d'une traduction de mesure, pour les logs : nombre de points,
+   * heure du premier et du dernier point, unité d'origine et décalage appliqué.
+   * Permet de vérifier en production que l'horodatage correspond à la convention v5
+   * (premier point d'une journée à 00:30, dernier à 00:00 le lendemain).
+   */
+  public static function measureDiagnostics(array $body, array $legacy, array $plan): string {
+    $readings = $legacy['meter_reading']['interval_reading'] ?? [];
+    $count = count($readings);
+    $grandeur = self::pickGrandeur($body['grandeur'] ?? [], $plan['metier'], $plan['type']);
+    $unit = (string)($grandeur['unite'] ?? '?');
+    $rawFirst = null;
+    foreach (($grandeur['points'] ?? []) as $point) {
+      if (is_array($point) && is_string($point['d'] ?? null)) {
+        $rawFirst = self::normalizeDateTime($point['d']);
+        break;
+      }
+    }
+    $first = $count ? substr($readings[0]['date'], 11) ?: $readings[0]['date'] : '-';
+    $last = $count ? substr($readings[$count - 1]['date'], 11) ?: $readings[$count - 1]['date'] : '-';
+    $shifted = 'n/a';
+    if ($plan['type'] === self::TYPE_LOAD_CURVE && $count && $rawFirst !== null) {
+      $shifted = in_array($rawFirst, array_column($readings, 'date'), true) ? 'non' : 'oui';
+    }
+    return sprintf('points=%d, premier=%s, dernier=%s, unite=%s, format_brut=%s, decalage=%s',
+      $count, $first, $last, $unit, self::describeDateFormat($grandeur['points'][0]['d'] ?? null), $shifted);
+  }
+
+  private static function describeDateFormat($value): string {
+    if (!is_string($value)) return 'absent';
+    return preg_replace('/\d/', '9', $value);
+  }
+
+  /**
    * Convertit les réponses « situation contractuelle » et « situation comptage »
    * au format de l'ancienne API contrats v5. L'une des deux peut être absente.
    */
