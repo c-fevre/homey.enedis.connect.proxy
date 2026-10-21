@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-10-21
+
+### Changed
+- PHP 8.4.27 (image `php:8.4.27-apache`, CI and e2e mock on 8.4): PHP 8.2 reaches end of
+  life on 2026-12-31, 8.4 is supported until the end of 2028. `composer.json` now requires
+  PHP >= 8.4
+
+### Fixed
+- An `AUTHORIZATION_ENDPOINT` still pointing to `/dataconnect/v1/` (pre-switchover `.env`)
+  is upgraded to `/dataconnect/v2/` at runtime instead of sending users to the old page;
+  `/health` then reports `authorize_upgraded_from: "v1"` until the `.env` is corrected
+
 ## [1.2.1] - 2026-10-21
 
 ### Security

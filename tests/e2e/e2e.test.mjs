@@ -135,8 +135,8 @@ const inProxy = (...cmd) => execFileSync('docker', [
   'compose', '-f', path.join(here, 'docker-compose.e2e.yml'), 'exec', '-T', 'proxy-auto', ...cmd,
 ], { encoding: 'utf8' }).trim();
 
-// php2shell (CVE-2026-109618, CVE-2026-109619) : RCE non authentifiée corrigée en 8.2.35
-const PHP_MIN = [8, 2, 35];
+// php2shell (CVE-2026-109618, CVE-2026-109619) : RCE non authentifiée corrigée en 8.4.27
+const PHP_MIN = [8, 4, 27];
 const versionAtLeast = (version, min) => {
   const parts = version.split('.').map(Number);
   for (let i = 0; i < min.length; i++) if (parts[i] !== min[i]) return parts[i] > min[i];
