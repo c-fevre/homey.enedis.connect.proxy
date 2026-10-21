@@ -28,10 +28,6 @@ jobs:
           restore-keys: |
             composer-${{ runner.os }}-
 
-      - name: Install dependencies (no-dev)
-        run: |
-          if [ -f composer.json ]; then composer install --no-interaction --prefer-dist --no-progress --no-dev; else echo "composer.json absent"; fi
-
       - name: Lint PHP
         run: |
           find . -type f -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -I{} php -l {}
