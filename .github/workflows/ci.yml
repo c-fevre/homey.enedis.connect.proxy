@@ -44,5 +44,5 @@ jobs:
       # Proxy réel (image Docker de production) + PostgreSQL + faux serveur Enedis
       - name: Tests de bout en bout
         run: |
-          rm -rf vendor composer.lock
+          rm -rf vendor
           ./tests/e2e/run.sh

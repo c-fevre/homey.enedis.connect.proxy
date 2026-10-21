@@ -62,3 +62,11 @@ services:
       ENEDIS_API_MODE: legacy
     ports:
       - "127.0.0.1:18082:80"
+
+  # Même image en mode dev : les routes de débogage (when@dev) doivent aussi se charger
+  proxy-dev:
+    <<: *proxy
+    environment:
+      APP_ENV: dev
+    ports:
+      - "127.0.0.1:18083:80"

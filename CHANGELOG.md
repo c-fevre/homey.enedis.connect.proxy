@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
   PHP >= 8.4
 
 ### Fixed
+- `composer.lock` is now committed and used by the Docker build, CI and e2e: dependency
+  versions no longer drift between builds (a fresh resolution on PHP 8.4 picked
+  `symfony/routing` 8.1, whose XML loader is gone, and broke every route in dev mode)
+- Error-page preview routes (`when@dev`) now load `errors.php` instead of the deprecated
+  `errors.xml`; the e2e suite boots the image in `APP_ENV=dev` as well
+- `docker-compose.yml` defaults to `APP_ENV=prod` instead of `dev`
 - An `AUTHORIZATION_ENDPOINT` still pointing to `/dataconnect/v1/` (pre-switchover `.env`)
   is upgraded to `/dataconnect/v2/` at runtime instead of sending users to the old page;
   `/health` then reports `authorize_upgraded_from: "v1"` until the `.env` is corrected

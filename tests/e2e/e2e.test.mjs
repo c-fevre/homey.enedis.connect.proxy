@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 const AUTO = process.env.PROXY_AUTO || 'http://127.0.0.1:18080';
 const NEW = process.env.PROXY_NEW || 'http://127.0.0.1:18081';
 const LEGACY = process.env.PROXY_LEGACY || 'http://127.0.0.1:18082';
+const DEV = process.env.PROXY_DEV || 'http://127.0.0.1:18083';
 const MOCK = process.env.MOCK_ENEDIS || 'http://127.0.0.1:19000';
 const CLIENT_ID = 'hmey_e2e_public_client_id';
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -126,6 +127,15 @@ test('health expose le statut, la version authorize et le mode', async () => {
     assert.equal(json.authorize, 'v2');
     assert.equal(json.api_mode, mode);
   }
+});
+
+test('l\'image démarre aussi en APP_ENV=dev (routes de débogage chargées)', async () => {
+  // Incident du 21/10/2026 : prod en mode dev + symfony/routing 8 sans chargeur XML -> 500 partout
+  const r = await fetch(`${DEV}/health`);
+  assert.equal(r.status, 200);
+  assert.ok((await r.text()).includes('"status":"ok"'));
+  const err = await fetch(`${DEV}/_error/404`);
+  assert.equal(err.status, 404, 'la prévisualisation des pages d\'erreur répond');
 });
 
 // ------------------------------------------------------------ durcissement PHP

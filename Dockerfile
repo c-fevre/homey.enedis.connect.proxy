@@ -45,10 +45,12 @@ COPY docker/php/conf.d/zz-hardening.ini $PHP_INI_DIR/conf.d/zz-hardening.ini
 # Définir le répertoire de travail
 WORKDIR /var/www/html
 
-# Copier le manifeste de dépendances
-COPY composer.json ./
+# Copier le manifeste et le verrou de dépendances : les versions sont celles du lock,
+# jamais une résolution fraîche (incident du 21/10/2026 : symfony/routing 8.1 résolu
+# au build, chargeur XML absent, prod en 500).
+COPY composer.json composer.lock ./
 
-# Installer les dépendances (génère composer.lock en build)
+# Installer les dépendances exactement comme verrouillées
 RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist --no-progress \
     && composer dump-autoload --optimize
 

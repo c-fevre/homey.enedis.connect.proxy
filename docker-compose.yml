@@ -11,7 +11,9 @@ services:
       - "127.0.0.1:8080:80"
   # Configuration épurée: aucune surcouche DNS
     environment:
-      - APP_ENV=${APP_ENV:-dev}
+      # prod par défaut : le mode dev expose les traces d'erreur et charge des routes de
+      # débogage ; il ne se choisit qu'explicitement (APP_ENV=dev dans le .env du projet).
+      - APP_ENV=${APP_ENV:-prod}
       - APP_SECRET=${APP_SECRET}
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_ADDRESS}:${DB_PORT}/${DB_NAME}
     env_file:

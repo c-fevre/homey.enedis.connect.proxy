@@ -1,4 +1,8 @@
+# Prévisualisation des pages d'erreur en dev (/_error/{code}).
+# Fichier PHP et non XML : le format XML de routage est déprécié en Symfony 7.4 et
+# retiré en 8.0 (incident du 21/10/2026 : image bâtie avec symfony/routing 8.1,
+# faute de composer.lock, et prod démarrée en APP_ENV=dev -> 500 sur toutes les routes).
 when@dev:
     _errors:
-        resource: '@FrameworkBundle/Resources/config/routing/errors.xml'
+        resource: '@FrameworkBundle/Resources/config/routing/errors.php'
         prefix: /_error
