@@ -23,6 +23,20 @@ class Helpers {
   }
   */
 
+  /**
+   * Endpoint d'autorisation effectif.
+   * Depuis la bascule Enedis du 28/09/2026, seul /dataconnect/v2/ est servi et le retour
+   * de consentement est au format v2 (autorisation_id). Une configuration restée sur
+   * /dataconnect/v1/ (ancien .env) est remontée en v2 plutôt que d'envoyer l'utilisateur
+   * sur l'ancienne page ; /health signale la remontée pour que le .env soit corrigé.
+   *
+   * @return array{url: string, upgraded_from: ?string}
+   */
+  public static function authorization_endpoint(string $configured): array {
+    $url = preg_replace('#/dataconnect/v1/#', '/dataconnect/v2/', $configured, 1, $count);
+    return ['url' => $url, 'upgraded_from' => $count ? 'v1' : null];
+  }
+
   public static function base64_urlencode($string) {
     return rtrim(strtr(base64_encode($string), '+/', '-_'), '=');
   }

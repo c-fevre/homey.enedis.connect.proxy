@@ -85,12 +85,22 @@ class Controller extends AbstractController {
   #[Route('/health', name: 'health', methods: ['GET'])]
   public function health(): Response {
     # 'status' doit rester la première clé : le healthcheck Docker cherche "status":"ok"
-    $authorize = (string)$this->getParameter('app_authorization_endpoint');
-    return new JsonResponse([
+    $authorize = $this->authorizationEndpoint();
+    $body = [
       'status' => 'ok',
-      'authorize' => preg_match('#/dataconnect/(v\d+)/#', $authorize, $m) ? $m[1] : 'custom',
+      'authorize' => preg_match('#/dataconnect/(v\d+)/#', $authorize['url'], $m) ? $m[1] : 'custom',
       'api_mode' => $this->apiMode(),
-    ]);
+    ];
+    if ($authorize['upgraded_from']) {
+      # Le .env configure encore l'ancien endpoint : à corriger, la remontée n'est qu'un filet
+      $body['authorize_upgraded_from'] = $authorize['upgraded_from'];
+    }
+    return new JsonResponse($body);
+  }
+
+  # Endpoint d'autorisation Enedis effectif (voir Helpers::authorization_endpoint)
+  private function authorizationEndpoint(): array {
+    return Helpers::authorization_endpoint((string)$this->getParameter('app_authorization_endpoint'));
   }
 
   # Mode d'accès aux API de données Enedis :
@@ -277,7 +287,7 @@ class Controller extends AbstractController {
     #   $query['code_challenge_method'] = 'S256';
     # }
 
-    $authURL = $this->getParameter('app_authorization_endpoint') . '?' . http_build_query($query);
+    $authURL = $this->authorizationEndpoint()['url'] . '?' . http_build_query($query);
 
     $response = new Response();
     $response->setStatusCode(Response::HTTP_FOUND);
