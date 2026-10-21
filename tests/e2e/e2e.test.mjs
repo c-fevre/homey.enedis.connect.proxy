@@ -7,12 +7,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const AUTO = process.env.PROXY_AUTO || 'http://127.0.0.1:18080';
 const NEW = process.env.PROXY_NEW || 'http://127.0.0.1:18081';
 const LEGACY = process.env.PROXY_LEGACY || 'http://127.0.0.1:18082';
 const MOCK = process.env.MOCK_ENEDIS || 'http://127.0.0.1:19000';
 const CLIENT_ID = 'hmey_e2e_public_client_id';
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 const START = '2026-09-25';
 const END = '2026-09-27';
@@ -124,6 +126,46 @@ test('health expose le statut, la version authorize et le mode', async () => {
     assert.equal(json.authorize, 'v2');
     assert.equal(json.api_mode, mode);
   }
+});
+
+// ------------------------------------------------------------ durcissement PHP
+
+// Commande exécutée dans le conteneur du proxy (c'est l'image de production qui tourne)
+const inProxy = (...cmd) => execFileSync('docker', [
+  'compose', '-f', path.join(here, 'docker-compose.e2e.yml'), 'exec', '-T', 'proxy-auto', ...cmd,
+], { encoding: 'utf8' }).trim();
+
+// php2shell (CVE-2026-109618, CVE-2026-109619) : RCE non authentifiée corrigée en 8.2.35
+const PHP_MIN = [8, 2, 35];
+const versionAtLeast = (version, min) => {
+  const parts = version.split('.').map(Number);
+  for (let i = 0; i < min.length; i++) if (parts[i] !== min[i]) return parts[i] > min[i];
+  return true;
+};
+const isOff = value => value === '' || value === '0';
+
+test('PHP corrigé contre php2shell et durci (CVE-2026-109618, CVE-2026-109619)', async () => {
+  const version = inProxy('php', '-r', 'echo PHP_VERSION;');
+  assert.ok(versionAtLeast(version, PHP_MIN), `PHP ${version} est antérieur à ${PHP_MIN.join('.')}`);
+
+  // Réglages effectifs, lus par le même PHP_INI_DIR que mod_php (docker/php/conf.d/zz-hardening.ini)
+  const keys = ['expose_php', 'session.upload_progress.enabled', 'post_max_size', 'upload_max_filesize', 'memory_limit'];
+  const ini = JSON.parse(inProxy('php', '-r', `$k = ${JSON.stringify(keys)}; echo json_encode(array_combine($k, array_map('ini_get', $k)));`));
+  assert.ok(isOff(ini.expose_php), 'expose_php doit être Off');
+  assert.ok(isOff(ini['session.upload_progress.enabled']), 'session.upload_progress.enabled doit être Off');
+  assert.equal(ini.post_max_size, '8M');
+  assert.equal(ini.upload_max_filesize, '2M');
+  assert.equal(ini.memory_limit, '256M', 'limite finie : pas de -1, le correctif le rend inutile');
+
+  // Rien ne doit surcharger ces réglages côté Apache (vhost ou .htaccess)
+  const overrides = inProxy('sh', '-c',
+    'grep -rilE "^[[:space:]]*php_(admin_)?(value|flag)" /etc/apache2/sites-enabled /var/www/html/public/.htaccess || true');
+  assert.equal(overrides, '', `php_value trouvé dans : ${overrides}`);
+
+  // Et la version n'est pas annoncée sur le réseau
+  const r = await fetch(`${AUTO}/health`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('x-powered-by'), null, 'X-Powered-By ne doit pas être envoyé');
 });
 
 // ------------------------------------------------------ parcours consentement
@@ -495,7 +537,6 @@ test('renouvellement du jeton de l\'application', async () => {
 
 // ------------------------------------------- vrai client de l'application Homey
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = process.env.APP_DIR || path.resolve(here, '../../../com.clement-fevre.enedis.connect');
 const hasApp = fs.existsSync(path.join(APP_DIR, 'lib/EnedisAPI.js')) && fs.existsSync(path.join(APP_DIR, 'node_modules/node-fetch'));
 

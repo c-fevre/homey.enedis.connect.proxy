@@ -50,6 +50,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          # Toujours résoudre l'image de base sur le registre : une image PHP corrigée
+          # ne doit jamais être remplacée par une couche FROM restée en cache.
+          pull: true
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

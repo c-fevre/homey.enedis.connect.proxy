@@ -1,5 +1,8 @@
-# Image de base PHP 8.2 avec Apache
-FROM php:8.2-apache
+# Image de base PHP 8.2 avec Apache.
+# Version épinglée : 8.2.35 corrige php2shell (CVE-2026-109618, CVE-2026-109619,
+# RCE non authentifiée, mod_php le plus exposé). Toute version antérieure est vulnérable.
+# Le test e2e « PHP corrigé contre php2shell » échoue si l'image régresse.
+FROM php:8.2.35-apache
 
 # Informations du mainteneur
 LABEL maintainer="clement.fevre@example.com"
@@ -34,6 +37,9 @@ RUN echo "ServerName localhost" > /etc/apache2/conf-available/servername.conf \
 
 # Copier la configuration Apache personnalisée
 COPY docker/apache/vhost.conf /etc/apache2/sites-available/000-default.conf
+
+# Durcissement PHP (source unique des réglages de requête, voir le fichier)
+COPY docker/php/conf.d/zz-hardening.ini $PHP_INI_DIR/conf.d/zz-hardening.ini
 
 # Définir le répertoire de travail
 WORKDIR /var/www/html

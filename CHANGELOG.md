@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2026-10-21
+
+### Security
+- PHP base image pinned to 8.2.35, which fixes php2shell (CVE-2026-109618 and
+  CVE-2026-109619): unauthenticated remote code execution reachable before any
+  application code runs, worst on Apache mod_php, which is what this image runs
+- PHP hardening in `docker/php/conf.d/zz-hardening.ini`: `expose_php=Off` (no more
+  `X-Powered-By: PHP/x.y.z`), `session.upload_progress.enabled=Off` (confirmed
+  exploitation path of CVE-2026-109619), `post_max_size=8M` and `upload_max_filesize=2M`
+  instead of 100M (the proxy only receives small OAuth forms and JSON requests)
+- The Apache vhost no longer sets any `php_value`; the ini file is the single source
+- CD always re-resolves the base image on the registry (`pull: true`), so a patched PHP
+  image can no longer be shadowed by a cached `FROM` layer
+- End-to-end test asserting the PHP version, the effective ini values, the absence of
+  Apache overrides and of the `X-Powered-By` header
+
 ## [1.2.0] - 2026-09-28
 
 Enedis DataConnect switchover of 2026-09-28 (Implementing Act). Installed Homey apps keep
