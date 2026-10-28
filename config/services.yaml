@@ -14,11 +14,13 @@ parameters:
     env(DISABLE_DATA_ENPOINT_AUTH): ''    
     env(PKCE): ''
     env(FLOW): ''
-    # Durée du consentement demandée à Enedis, au format ISO 8601. P3Y = 3 ans, le
-    # maximum autorisé. Jusqu'au 28/10/2026 le portail Enedis rejetait les années
-    # pleines (« Une erreur est survenue », incident eINC12855520) et le proxy envoyait
-    # P1095D ; le correctif Enedis est vérifié le 29/10/2026, P1095D reste accepté.
-    env(DURATION): 'P3Y'
+    # Durée du consentement demandée à Enedis (ISO 8601). 3 ans = le maximum autorisé,
+    # exprimés en JOURS : P1095D est la seule valeur validée de bout en bout.
+    # Incident Enedis eINC12855520 : le portail rejetait les années pleines (P3Y) ;
+    # depuis leur correctif du 28/10/2026 la page les accepte, mais le 29/10/2026 la
+    # création de l'autorisation répondait 500 ERREUR_TECHNIQUE_CONTEXTE_RECUPERATION_DONNEES
+    # avec P3Y comme avec P1095D. Ne repasser à P3Y qu'après un parcours complet réussi.
+    env(DURATION): 'P1095D'
 
     # Accès aux API de données : auto (nouvelles API puis repli v5) | new | legacy
     env(ENEDIS_API_MODE): 'auto'
