@@ -90,6 +90,8 @@ class Controller extends AbstractController {
       'status' => 'ok',
       'authorize' => preg_match('#/dataconnect/(v\d+)/#', $authorize['url'], $m) ? $m[1] : 'custom',
       'api_mode' => $this->apiMode(),
+      # Durée de consentement demandée : permet de vérifier le .env du serveur sans y accéder
+      'duration' => $this->getParameter('app_duration'),
     ];
     if ($authorize['upgraded_from']) {
       # Le .env configure encore l'ancien endpoint : à corriger, la remontée n'est qu'un filet

@@ -14,13 +14,11 @@ parameters:
     env(DISABLE_DATA_ENPOINT_AUTH): ''    
     env(PKCE): ''
     env(FLOW): ''
-    # 3 ans exprimés en JOURS, et non 'P3Y'. Le portail Enedis valide la durée avec
-    # `moment.duration(d).months() !== 0 || .days() !== 0` : une durée en années
-    # pleines a months()=0 et days()=0, donc P3Y/P2Y/P1Y échouent au contrôle et
-    # affichent « Une erreur est survenue » avant tout consentement possible.
-    # P1095D passe le contrôle et transmet exactement 1095 jours (P3Y en envoyait 1096,
-    # soit un jour de plus que le maximum de 3 ans autorisé).
-    env(DURATION): 'P1095D'
+    # Durée du consentement demandée à Enedis, au format ISO 8601. P3Y = 3 ans, le
+    # maximum autorisé. Jusqu'au 28/10/2026 le portail Enedis rejetait les années
+    # pleines (« Une erreur est survenue », incident eINC12855520) et le proxy envoyait
+    # P1095D ; le correctif Enedis est vérifié le 29/10/2026, P1095D reste accepté.
+    env(DURATION): 'P3Y'
 
     # Accès aux API de données : auto (nouvelles API puis repli v5) | new | legacy
     env(ENEDIS_API_MODE): 'auto'

@@ -126,6 +126,7 @@ test('health expose le statut, la version authorize et le mode', async () => {
     const json = JSON.parse(text);
     assert.equal(json.authorize, 'v2');
     assert.equal(json.api_mode, mode);
+    assert.equal(json.duration, 'P3Y', 'la durée configurée est visible sans ouvrir le .env');
   }
 });
 
@@ -185,7 +186,7 @@ test('redirection vers la page de consentement Enedis v2', async () => {
   assert.equal(flow.location.pathname, '/dataconnect/v2/oauth2/authorize');
   assert.equal(flow.location.searchParams.get('client_id'), 'e2e-enedis-client-id', 'identifiant Enedis privé, pas l\'identifiant public');
   assert.equal(flow.location.searchParams.get('response_type'), 'code');
-  assert.equal(flow.location.searchParams.get('duration'), 'P1095D');
+  assert.equal(flow.location.searchParams.get('duration'), 'P3Y', 'années pleines acceptées par Enedis depuis le 28/10/2026');
   assert.ok(flow.state.length >= 32 && flow.state.length <= 100, 'state limité à 100 caractères par Enedis');
   assert.deepEqual([...flow.location.searchParams.keys()].sort(), ['client_id', 'duration', 'response_type', 'state']);
 });

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.1] - 2026-10-29
+
+### Changed
+- Consent duration defaults to `P3Y` again: Enedis fixed the consent portal's rejection of
+  whole-year durations (incident eINC12855520, fix deployed 2026-10-28, verified
+  2026-10-29). `P1095D` keeps working for an unchanged `.env`
+- `/health` reports the configured `duration`, so the server's `.env` can be checked
+  without opening it
+
 ## [1.3.0] - 2026-10-21
 
 ### Changed
