@@ -42,7 +42,7 @@ services:
 
   # Base de données PostgreSQL
   db:
-    image: postgres:15-alpine
+    image: postgres:15.19-alpine
     container_name: cfe-homey-enedis-proxy-db
     environment:
       POSTGRES_DB: ${DB_NAME:-enedis_proxy}

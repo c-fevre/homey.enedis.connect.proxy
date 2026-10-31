@@ -21,7 +21,7 @@ x-proxy: &proxy
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:15.19-alpine
     environment:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e
